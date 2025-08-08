@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Logo Search Tool</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+    }
+    #container {
+        display: flex;
+        gap: 20px;
+    }
+    #left, #right {
+        border: 1px solid #ccc;
+        padding: 15px;
+        border-radius: 5px;
+    }
+    #left {
+        flex: 2;
+    }
+    #right {
+        flex: 1;
+    }
+    button, input[type="file"] {
+        font-size: 1em;
+        padding: 8px 15px;
+        margin: 5px;
+    }
+    h2 {
+        margin-top: 0;
+    }
+</style>
+</head>
+<body>
+
+<h1>Logo Search Tool</h1>
+
+<input type="file" id="fileInput" accept=".json"><br><br>
+
+<div id="container">
+    <div id="left">
+        <h2>Current Tool</h2>
+        <div id="toolDetails">Please load a JSON file.</div>
+        <button id="nextBtn" disabled>Search</button>
+        <button id="skipBtn" disabled>Skip</button>
+    </div>
+    <div id="right">
+        <h2>Select Fields for Search</h2>
+        <div id="fieldCheckboxes"></div>
+    </div>
+</div>
+
+<script>
+let toolsList = [];
+let currentIndex = 0;
+
+function renderTool() {
+    if (currentIndex < toolsList.length) {
+        const tool = toolsList[currentIndex];
+        let html = "<table>";
+        Object.entries(tool).forEach(([key, value]) => {
+            html += `<tr><td><b>${key}</b></td><td>${value}</td></tr>`;
+        });
+        html += "</table>";
+        document.getElementById("toolDetails").innerHTML = html;
+
+        renderFieldCheckboxes(tool);
+    } else {
+        document.getElementById("toolDetails").textContent = "Done!";
+        document.getElementById("nextBtn").disabled = true;
+        document.getElementById("skipBtn").disabled = true;
+    }
+}
+
+function renderFieldCheckboxes(tool) {
+    const container = document.getElementById("fieldCheckboxes");
+    container.innerHTML = "";
+    Object.keys(tool).forEach(field => {
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = field;
+        checkbox.checked = (field === "name"); // default check "name"
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(" " + field));
+        container.appendChild(label);
+        container.appendChild(document.createElement("br"));
+    });
+}
+
+document.getElementById("fileInput").addEventListener("change", function(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                if (parsed.categories && Array.isArray(parsed.categories)) {
+                    toolsList = parsed.categories.flatMap(cat => cat.tools);
+                    currentIndex = 0;
+                    document.getElementById("nextBtn").disabled = false;
+                    document.getElementById("skipBtn").disabled = false;
+                    renderTool();
+                } else {
+                    alert("Invalid JSON structure: missing categories array.");
+                }
+            } catch {
+                alert("Invalid JSON file.");
+            }
+        };
+        reader.readAsText(file);
+    }
+});
+
+document.getElementById("nextBtn").addEventListener("click", () => {
+    if (currentIndex < toolsList.length) {
+        const tool = toolsList[currentIndex];
+        const selectedFields = Array.from(document.querySelectorAll("#fieldCheckboxes input:checked"))
+            .map(cb => tool[cb.value] || "");
+        const queryText = selectedFields.join(" ") + " logo png";
+        const query = encodeURIComponent(queryText);
+        window.open(`https://www.google.com/search?tbm=isch&q=${query}`, "_blank");
+        currentIndex++;
+        renderTool();
+    }
+});
+
+document.getElementById("skipBtn").addEventListener("click", () => {
+    if (currentIndex < toolsList.length) {
+        currentIndex++;
+        renderTool();
+    }
+});
+</script>
+
+</body>
+</html>
