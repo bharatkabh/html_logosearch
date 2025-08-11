@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive Android Compose Layout Simulator</title>
+  <style>
+    /* ... same styles as before ... */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background: #f9f9f9;
+      color: #333;
+      line-height: 1.6;
+    }
+    h1, h2 {
+      color: #007ACC;
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 600;
+    }
+    input[type=range] {
+      width: 100%;
+    }
+    select {
+      margin-top: 5px;
+      padding: 4px 8px;
+      font-size: 1rem;
+    }
+    pre {
+      background: #272822;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      max-width: 100%;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 10px;
+    }
+    .layout-container {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 2px 6px rgb(0 0 0 / 0.1);
+      min-height: 150px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: auto;
+    }
+    .row-layout, .column-layout, .flowrow-layout {
+      display: flex;
+      background: #eef7ff;
+      padding: 10px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 650px;
+      box-sizing: border-box;
+    }
+    .row-layout {
+      flex-direction: row;
+      flex-wrap: nowrap;
+    }
+    .column-layout {
+      flex-direction: column;
+      flex-wrap: nowrap;
+    }
+    .flowrow-layout {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      min-height: 150px;
+      height: auto;
+      max-height: 300px;
+    }
+    .box {
+      background-color: #007ACC;
+      color: white;
+      padding: 10px 15px;
+      margin: 5px;
+      border-radius: 6px;
+      user-select: none;
+      flex-shrink: 0;
+      text-align: center;
+      font-weight: 700;
+      cursor: default;
+      min-width: 70px;
+      min-height: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-sizing: border-box;
+    }
+    .spacer {
+      background: #bbb;
+      margin: 5px;
+      border-radius: 4px;
+      opacity: 0.5;
+      user-select: none;
+      cursor: default;
+      min-width: 10px;
+      min-height: 10px;
+    }
+    .spacer.flex-grow {
+      flex-grow: 1;
+      flex-shrink: 1;
+      flex-basis: 0%;
+    }
+    .box-stack-container {
+      position: relative;
+      width: 300px;
+      height: 180px;
+      background: #eef7ff;
+      border-radius: 8px;
+      padding: 20px;
+      box-sizing: border-box;
+      margin-top: 20px;
+    }
+    .stack-box {
+      position: absolute;
+      width: 100px;
+      height: 60px;
+      background-color: #007ACC;
+      color: white;
+      border-radius: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: 700;
+      user-select: none;
+      cursor: default;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transition: left 0.2s, top 0.2s;
+    }
+    .nested-layout {
+      background: #cde9ff;
+      border-radius: 6px;
+      padding: 8px;
+      margin: 5px;
+      box-sizing: border-box;
+      border: 2px dashed #007ACC;
+      min-width: 130px;
+      min-height: 100px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #004a85;
+      font-weight: 600;
+    }
+    #composeExamples {
+      margin-top: 40px;
+    }
+    #composeExamples h2 {
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Interactive Android Compose Layout Simulator</h1>
+  <p>Play with different layouts and see how properties like spacing, padding, alignment, spacer, fillMaxWidth, nested layouts, and stacking work — similar to Jetpack Compose!</p>
+
+  <section>
+    <h2>Choose Layout Type</h2>
+    <select id="layoutType">
+      <option value="row">Row (Horizontal)</option>
+      <option value="column">Column (Vertical)</option>
+      <option value="flowrow">FlowRow (Wrap items horizontally)</option>
+      <option value="boxstack">Box (Stacked overlapping)</option>
+    </select>
+  </section>
+
+  <section id="propertiesSection">
+    <h2>Properties</h2>
+
+    <label for="spacing">Spacing Between Items (dp): <span id="spacingVal">8</span></label>
+    <input type="range" id="spacing" min="0" max="50" value="8" />
+
+    <label for="padding">Padding Around Layout (dp): <span id="paddingVal">16</span></label>
+    <input type="range" id="padding" min="0" max="50" value="16" />
+
+    <label for="alignment">Alignment of Items:</label>
+    <select id="alignment">
+      <option value="start">Start</option>
+      <option value="center" selected>Center</option>
+      <option value="end">End</option>
+      <option value="space-between">Space Between</option>
+      <option value="space-around">Space Around</option>
+      <option value="space-evenly">Space Evenly</option>
+    </select>
+
+    <label><input type="checkbox" id="useSpacer" /> Add Spacer between Item 1 and Item 2</label>
+
+    <label><input type="checkbox" id="useFillMaxWidth" /> Make Item 2 fill max width/height (fillMaxWidth)</label>
+
+    <label><input type="checkbox" id="useNestedLayout" /> Nest a layout inside this layout</label>
+
+    <label id="nestedDirectionLabel" style="display:none; margin-top: 10px;">
+      Nested Layout Direction:
+      <select id="nestedDirection">
+        <option value="column">Column (Vertical)</option>
+        <option value="row">Row (Horizontal)</option>
+      </select>
+    </label>
+  </section>
+
+  <section>
+    <h2>Layout Preview</h2>
+    <div class="layout-container">
+      <div id="layout" class="row-layout" style="padding:16px; gap: 8px; justify-content: center; align-items: center;">
+        <div class="box">Item 1</div>
+        <div class="box">Item 2</div>
+        <div class="box">Item 3</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="boxStackControls" style="display:none;">
+    <h2>Box Stacking Controls</h2>
+    <label for="offsetX">Horizontal Offset (px): <span id="offsetXVal">20</span></label>
+    <input type="range" id="offsetX" min="0" max="100" value="20" />
+
+    <label for="offsetY">Vertical Offset (px): <span id="offsetYVal">20</span></label>
+    <input type="range" id="offsetY" min="0" max="100" value="20" />
+  </section>
+
+  <section id="composeExamples">
+    <h2>Compose Code Examples</h2>
+
+    <h3>1. Nesting Rows and Columns</h3>
+    <pre><code class="kotlin">
+@Composable
+fun NestedRowColumnExample() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Column Item 1")
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Column Item 2")
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Column Item 3")
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Column Item 4")
+        }
+    }
+}
+    </code></pre>
+
+    <h3>2. Custom Layout with <code>Layout</code> Composable</h3>
+    <pre><code class="kotlin">
+@Composable
+fun CustomLayoutExample(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Layout(
+        content = content,
+        modifier = modifier
+    ) { measurables, constraints ->
+
+        val placeables = measurables.map { measurable ->
+            measurable.measure(constraints)
+        }
+
+        val width = placeables.maxOfOrNull { it.width } ?: constraints.minWidth
+        val height = placeables.sumOf { it.height }
+
+        layout(width, height) {
+            var yPosition = 0
+
+            placeables.forEach { placeable ->
+                placeable.placeRelative(x = 0, y = yPosition)
+                yPosition += placeable.height
+            }
+        }
+    }
+}
+
+@Composable
+fun CustomLayoutDemo() {
+    CustomLayoutExample(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .background(Color.LightGray)
+    ) {
+        Text("Custom layout child 1", Modifier.padding(8.dp))
+        Text("Custom layout child 2", Modifier.padding(8.dp))
+        Text("Custom layout child 3", Modifier.padding(8.dp))
+    }
+}
+    </code></pre>
+
+    <h3>3. ConstraintLayout in Compose</h3>
+    <pre><code class="kotlin">
+import androidx.constraintlayout.compose.ConstraintLayout
+
+@Composable
+fun ConstraintLayoutExample() {
+    ConstraintLayout(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .padding(16.dp)
+    ) {
+        val (button, text) = createRefs()
+
+        Button(
+            onClick = {},
+            modifier = Modifier.constrainAs(button) {
+                start.linkTo(parent.start)
+                top.linkTo(parent.top)
+            }
+        ) {
+            Text("Button")
+        }
+
+        Text(
+            "Text next to button",
+            modifier = Modifier.constrainAs(text) {
+                start.linkTo(button.end, margin = 16.dp)
+                centerVerticallyTo(button)
+            }
+        )
+    }
+}
+    </code></pre>
+  </section>
+
+  <script>
+    const layout = document.getElementById('layout');
+    const layoutTypeSelect = document.getElementById('layoutType');
+    const spacingInput = document.getElementById('spacing');
+    const paddingInput = document.getElementById('padding');
+    const alignmentSelect = document.getElementById('alignment');
+    const spacingVal = document.getElementById('spacingVal');
+    const paddingVal = document.getElementById('paddingVal');
+    const useSpacerCheckbox = document.getElementById('useSpacer');
+    const boxStackControls = document.getElementById('boxStackControls');
+    const offsetXInput = document.getElementById('offsetX');
+    const offsetYInput = document.getElementById('offsetY');
+    const offsetXVal = document.getElementById('offsetXVal');
+    const offsetYVal = document.getElementById('offsetYVal');
+    const propertiesSection = document.getElementById('propertiesSection');
+    const useFillMaxWidthCheckbox = document.getElementById('useFillMaxWidth');
+    const useNestedLayoutCheckbox = document.getElementById('useNestedLayout');
+    const nestedDirectionSelect = document.getElementById('nestedDirection');
+    const nestedDirectionLabel = document.getElementById('nestedDirectionLabel');
+
+    function createBox(text) {
+      const box = document.createElement('div');
+      box.classList.add('box');
+      box.textContent = text;
+      return box;
+    }
+
+    function createSpacer() {
+      const spacer = document.createElement('div');
+      spacer.classList.add('spacer', 'flex-grow');
+      spacer.title = 'Spacer (flexible space)';
+      return spacer;
+    }
+
+    function createNestedLayout(nestedDirection) {
+      const nested = document.createElement('div');
+      nested.classList.add('nested-layout');
+      if (nestedDirection === 'row') {
+        nested.style.display = 'flex';
+        nested.style.flexDirection = 'row';
+        nested.style.alignItems = 'center';
+        nested.style.justifyContent = 'center';
+        nested.style.gap = '8px';
+        nested.style.minWidth = '130px';
+        nested.style.minHeight = '100px';
+
+        const nBox1 = createBox('Nested 1');
+        const nBox2 = createBox('Nested 2');
+        nested.appendChild(nBox1);
+        nested.appendChild(nBox2);
+      } else { // column
+        nested.style.display = 'flex';
+        nested.style.flexDirection = 'column';
+        nested.style.alignItems = 'center';
+        nested.style.justifyContent = 'center';
+        nested.style.gap = '8px';
+        nested.style.minWidth = '130px';
+        nested.style.minHeight = '100px';
+
+        const nBox1 = createBox('Nested 1');
+        const nBox2 = createBox('Nested 2');
+        nested.appendChild(nBox1);
+        nested.appendChild(nBox2);
+      }
+      return nested;
+    }
+
+    function clearChildren(el) {
+      while (el.firstChild) {
+        el.removeChild(el.firstChild);
+      }
+    }
+
+    function updateLayout() {
+      const layoutType = layoutTypeSelect.value;
+
+      clearChildren(layout);
+      layout.className = '';
+      layout.style.cssText = '';
+
+      if (layoutType === 'boxstack') {
+        propertiesSection.style.display = 'none';
+        boxStackControls.style.display = 'block';
+      } else {
+        propertiesSection.style.display = 'block';
+        boxStackControls.style.display = 'none';
+      }
+
+      if (layoutType === 'row') {
+        layout.classList.add('row-layout');
+      } else if (layoutType === 'column') {
+        layout.classList.add('column-layout');
+      } else if (layoutType === 'flowrow') {
+        layout.classList.add('flowrow-layout');
+      } else if (layoutType === 'boxstack') {
+        layout.classList.add('boxstack-layout');
+        // Will do box stacking below
+      }
+
+      // spacing and padding in px (1dp ~ 1.5px approx)
+      const spacing = parseInt(spacingInput.value, 10);
+      const padding = parseInt(paddingInput.value, 10);
+
+      if (layoutType !== 'boxstack') {
+        layout.style.gap = spacing + 'px';
+        layout.style.padding = padding + 'px';
+      }
+
+      // alignment
+      const alignment = alignmentSelect.value;
+
+      if (layoutType === 'row' || layoutType === 'flowrow') {
+        // horizontal main axis - justifyContent controls horizontal
+        switch (alignment) {
+          case 'start':
+            layout.style.justifyContent = 'flex-start';
+            break;
+          case 'center':
+            layout.style.justifyContent = 'center';
+            break;
+          case 'end':
+            layout.style.justifyContent = 'flex-end';
+            break;
+          case 'space-between':
+            layout.style.justifyContent = 'space-between';
+            break;
+          case 'space-around':
+            layout.style.justifyContent = 'space-around';
+            break;
+          case 'space-evenly':
+            layout.style.justifyContent = 'space-evenly';
+            break;
+        }
+        layout.style.alignItems = 'center';
+      } else if (layoutType === 'column') {
+        // vertical main axis - justifyContent controls vertical
+        switch (alignment) {
+          case 'start':
+            layout.style.justifyContent = 'flex-start';
+            break;
+          case 'center':
+            layout.style.justifyContent = 'center';
+            break;
+          case 'end':
+            layout.style.justifyContent = 'flex-end';
+            break;
+          case 'space-between':
+            layout.style.justifyContent = 'space-between';
+            break;
+          case 'space-around':
+            layout.style.justifyContent = 'space-around';
+            break;
+          case 'space-evenly':
+            layout.style.justifyContent = 'space-evenly';
+            break;
+        }
+        layout.style.alignItems = 'center';
+      }
+
+      // Create items and add spacer/fillMaxWidth if needed
+      const item1 = createBox('Item 1');
+      let item2 = createBox('Item 2');
+      const item3 = createBox('Item 3');
+
+      if (useFillMaxWidthCheckbox.checked) {
+        if (layoutType === 'row' || layoutType === 'flowrow') {
+          item2.style.flexGrow = '1';
+          item2.style.flexBasis = '0%';
+        } else if (layoutType === 'column') {
+          item2.style.alignSelf = 'stretch';
+        }
+      } else {
+        item2.style.flexGrow = '0';
+        item2.style.flexBasis = 'auto';
+        item2.style.alignSelf = 'auto';
+      }
+
+      if (useSpacerCheckbox.checked) {
+        // Add spacer between item 1 and 2
+        layout.appendChild(item1);
+        layout.appendChild(createSpacer());
+        layout.appendChild(item2);
+        layout.appendChild(item3);
+      } else {
+        layout.appendChild(item1);
+        layout.appendChild(item2);
+        layout.appendChild(item3);
+      }
+
+      // Remove the last two appended items for nested insertion
+      if (useSpacerCheckbox.checked) {
+        // Items: item1, spacer, item2, item3
+        // We'll remove item2 and item3, then insert nested or item3 after spacer
+        layout.removeChild(item2);
+        layout.removeChild(item3);
+      } else {
+        // Items: item1, item2, item3
+        layout.removeChild(item2);
+        layout.removeChild(item3);
+      }
+
+      // Nested layout or item3
+      if (useNestedLayoutCheckbox.checked && layoutType !== 'boxstack') {
+        const nestedDirection = nestedDirectionSelect.value;
+        const nested = createNestedLayout(nestedDirection);
+        layout.appendChild(nested);
+      } else {
+        layout.appendChild(item3);
+      }
+    }
+
+    // Box stacking offsets
+    offsetXInput.addEventListener('input', () => {
+      offsetXVal.textContent = offsetXInput.value;
+      updateStackBoxPositions();
+    });
+    offsetYInput.addEventListener('input', () => {
+      offsetYVal.textContent = offsetYInput.value;
+      updateStackBoxPositions();
+    });
+
+    function updateStackBoxPositions() {
+      const offsetX = parseInt(offsetXInput.value, 10);
+      const offsetY = parseInt(offsetYInput.value, 10);
+
+      clearChildren(layout);
+      layout.style.position = 'relative';
+      layout.style.padding = '0';
+      layout.style.justifyContent = '';
+      layout.style.alignItems = '';
+
+      for (let i = 0; i < 3; i++) {
+        const box = document.createElement('div');
+        box.classList.add('stack-box');
+        box.textContent = 'Box ' + (i + 1);
+        box.style.left = offsetX * i + 'px';
+        box.style.top = offsetY * i + 'px';
+        layout.appendChild(box);
+      }
+    }
+
+    // Event listeners for controls
+    spacingInput.addEventListener('input', () => {
+      spacingVal.textContent = spacingInput.value;
+      updateLayout();
+    });
+    paddingInput.addEventListener('input', () => {
+      paddingVal.textContent = paddingInput.value;
+      updateLayout();
+    });
+    layoutTypeSelect.addEventListener('change', () => {
+      updateLayout();
+    });
+    alignmentSelect.addEventListener('change', () => {
+      updateLayout();
+    });
+    useSpacerCheckbox.addEventListener('change', () => {
+      updateLayout();
+    });
+    useFillMaxWidthCheckbox.addEventListener('change', () => {
+      updateLayout();
+    });
+    useNestedLayoutCheckbox.addEventListener('change', () => {
+      nestedDirectionLabel.style.display = useNestedLayoutCheckbox.checked ? 'block' : 'none';
+      updateLayout();
+    });
+    nestedDirectionSelect.addEventListener('change', () => {
+      updateLayout();
+    });
+
+    // Initialize
+    nestedDirectionLabel.style.display = useNestedLayoutCheckbox.checked ? 'block' : 'none';
+    updateLayout();
+  </script>
+</body>
+</html>
