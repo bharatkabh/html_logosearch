@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catch the Birthday Guy</title>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    touch-action: none; /* prevent scrolling on touch */
+}
+#gameCanvas {
+    display: block;
+    background: #f0f0f0;
+}
+
+/* Settings panel at the bottom center, vertical sliders */
+#settingsPanel {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 14px;
+    display: flex;
+    gap: 30px;
+
+	
+}
+
+#settingsPanel label {
+    display: flex;
+    flex-direction: column;  /* label on top, slider vertical below */
+    align-items: center;
+    margin: 0;
+}
+
+#settingsPanel input[type=range] {
+    writing-mode: bt-lr;       /* vertical slider */
+    -webkit-appearance: slider-vertical;
+    width: 8px;               /* thickness */
+    height: 100px;            /* height */
+    margin-top: 10px;
+}
+
+#muteBtn {
+    align-self: center;
+    margin-top: 0;
+    background: #333;
+    color: #fff;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<div id="settingsPanel">
+  <label>Speed: <input type="range" id="speedControl" min="2" max="8" value="3"></label>
+  <label>Group Size: <input type="range" id="groupSizeControl" min="5" max="25" value="15"></label>
+  <button id="muteBtn">Mute</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+let speedFactor = 3;
+let groupSize = 15;
+let isMuted = false;
+
+const birthdayEmoji = '🥳';
+const birthdayTransformEmoji = '🍸';
+const otherEmojis = ['😀','😎','😃','🙂','😉','😊'];
+
+let birthdayGuy = { x: 200, y: 200, size: 50, dx: 3, dy: 3 };
+let group = [];
+let pointer = { x: canvas.width/2, y: canvas.height/2 };
+let explosions = [];
+
+const catchSound = new Audio('https://www.soundjay.com/button/sounds/button-3.mp3');
+const explosionSound = new Audio('https://www.soundjay.com/button/sounds/button-16.mp3');
+
+function createGroup() {
+  group = [];
+  for (let i = 0; i < groupSize; i++) {
+    group.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      dx: (Math.random() - 0.5) * 4,
+      dy: (Math.random() - 0.5) * 4,
+      size: 50
+    });
+  }
+}
+
+function setPointer(x, y) {
+  pointer.x = x;
+  pointer.y = y;
+}
+
+// Touch & Mouse Input
+canvas.addEventListener('touchstart', (e) => {
+  setPointer(e.touches[0].clientX, e.touches[0].clientY);
+  e.preventDefault();
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  setPointer(e.touches[0].clientX, e.touches[0].clientY);
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('mousemove', (e) => {
+  setPointer(e.clientX, e.clientY);
+});
+
+document.getElementById('speedControl').addEventListener('input', (e) => {
+  speedFactor = parseInt(e.target.value);
+});
+
+document.getElementById('groupSizeControl').addEventListener('input', (e) => {
+  groupSize = parseInt(e.target.value);
+  createGroup();
+});
+
+document.getElementById('muteBtn').addEventListener('click', () => {
+  isMuted = !isMuted;
+  document.getElementById('muteBtn').textContent = isMuted ? 'Unmute' : 'Mute';
+});
+
+function startExplosion(x, y) {
+  if (!isMuted) explosionSound.play();
+  const emojis = ['🎉','🎂','🎁','🥳','🍾','🎊'];
+  for (let i = 0; i < 30; i++) {
+    explosions.push({
+      emoji: emojis[Math.floor(Math.random() * emojis.length)],
+      x, y,
+      dx: (Math.random() - 0.5) * 10,
+      dy: (Math.random() - 0.5) * 10,
+      life: 100
+    });
+  }
+}
+
+function updateExplosions() {
+  explosions.forEach(exp => {
+    exp.x += exp.dx;
+    exp.y += exp.dy;
+    exp.dy += 0.2; // gravity
+    exp.life -= 2;
+  });
+  explosions = explosions.filter(exp => exp.life > 0);
+}
+
+function drawExplosions() {
+  ctx.font = '40px Arial';
+  explosions.forEach(exp => {
+    ctx.globalAlpha = exp.life / 100;
+    ctx.fillText(exp.emoji, exp.x, exp.y);
+    ctx.globalAlpha = 1;
+  });
+}
+
+function updatePositions() {
+  // Move birthday guy
+  let dx = pointer.x - birthdayGuy.x;
+  let dy = pointer.y - birthdayGuy.y;
+  let dist = Math.sqrt(dx*dx + dy*dy);
+   
+     if (birthdayGuy.dx > 15 || birthdayGuy.dx < -15) {
+        birthdayGuy.dx = 5;
+    }
+    if (birthdayGuy.dy > 15 || birthdayGuy.dy < -15) {
+        birthdayGuy.dy = 5;
+    }
+   
+   
+  birthdayGuy.x += birthdayGuy.dx * speedFactor;
+  birthdayGuy.y += birthdayGuy.dy * speedFactor;
+
+console.log('BirthdayGuy -> dx:', birthdayGuy.dx * speedFactor, 'dy:', birthdayGuy.dy * speedFactor);
+
+  // Bounce off edges
+  if (birthdayGuy.x < 0 || birthdayGuy.x > canvas.width) birthdayGuy.dx *= -1;
+  if (birthdayGuy.y < 0 || birthdayGuy.y > canvas.height) birthdayGuy.dy *= -1;
+
+  // Move group members
+  group.forEach(member => {
+    let gx = pointer.x - member.x;
+    let gy = pointer.y - member.y;
+    let gdist = Math.sqrt(gx*gx + gy*gy);
+    if (gdist < 200) {
+      member.dx *= 1.01;
+      member.dy *= 1.01;
+    }
+	  if (member.dx > 15 || member.dx < -15) {
+        member.dx = 5;
+    }
+    if (member.dy > 15 || member.dy < -15) {
+        member.dy = 5;
+    }
+    member.x += member.dx * (speedFactor - 1);
+    member.y += member.dy * (speedFactor - 1);
+	
+	  console.log(`member dx:`, member.dx, 'dy:', member.dy);
+	
+    if (member.x < 0 || member.x > canvas.width) member.dx *= -1;
+    if (member.y < 0 || member.y > canvas.height) member.dy *= -1;
+  });
+
+  // Trigger explosion on touch
+  if (dist < 50) {
+    startExplosion(birthdayGuy.x, birthdayGuy.y);
+    if (!isMuted) catchSound.play();
+  }
+}
+
+function drawCharacters() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = '50px Arial';
+  ctx.fillText(birthdayEmoji, birthdayGuy.x, birthdayGuy.y);
+  group.forEach(member => {
+    ctx.fillText(otherEmojis[Math.floor(Math.random() * otherEmojis.length)], member.x, member.y);
+  });
+}
+
+function gameLoop() {
+  updatePositions();
+  drawCharacters();
+  updateExplosions();
+  drawExplosions();
+  requestAnimationFrame(gameLoop);
+}
+
+// Initialize
+createGroup();
+window.addEventListener('load', gameLoop);
+</script>
+</body>
+</html>

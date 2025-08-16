@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Stick Fight — Hero vs Many</title>
+<style>
+  :root { --hudH: 120px; }
+  html,body { margin:0; height:100%; background:#0b0c10; color:#eaeef6; font-family:system-ui,Arial; -webkit-user-select:none; user-select:none; }
+  canvas { display:block; width:100vw; height:calc(100vh - var(--hudH)); background:linear-gradient(#122026,#071016); touch-action:none; }
+  /* HUD / Controls */
+  .hud {
+    position:fixed; left:0; right:0; bottom:0; height:var(--hudH);
+    background:rgba(6,9,12,.9); display:flex; gap:12px; align-items:center; justify-content:center; padding:10px; box-sizing:border-box;
+  }
+  .leftCluster, .rightCluster { display:flex; gap:10px; align-items:center; }
+  .btn {
+    width:64px; height:64px; border-radius:12px; background:linear-gradient(#28323b,#14181c); color:#eaeef6; font-weight:700; border:1px solid #2f3a45;
+    display:flex; align-items:center; justify-content:center; touch-action:manipulation;
+  }
+  .btn:active { transform:translateY(2px); filter:brightness(1.08); }
+  .small { width:52px; height:52px; border-radius:10px; }
+  .hpBars { position:fixed; left:12px; top:12px; right:12px; display:flex; justify-content:space-between; gap:12px; z-index:10; }
+  .hp { width:32%; background:#1a2230; border-radius:8px; overflow:hidden; height:14px; box-shadow:inset 0 1px 3px rgba(0,0,0,.6); }
+  .hpFill { height:100%; width:100%; background:linear-gradient(90deg,#22c55e,#16a34a); transition:width .2s linear; }
+  .label { font-size:12px; opacity:.9; text-shadow:0 1px 2px #000; }
+  .centerText { position:fixed; left:50%; top:48%; transform:translate(-50%,-50%); color:#fff; font-weight:800; text-align:center; pointer-events:none; z-index:9; }
+  @media (max-width:520px){ .btn{ width:54px; height:54px; } :root{ --hudH:140px } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hpBars">
+  <div style="width:30%"><div class="label">Hero</div><div class="hp"><div id="heroHP" class="hpFill"></div></div></div>
+  <div style="width:30%"><div class="label">Enemies Alive</div><div class="hp"><div id="enemyHP" class="hpFill"></div></div></div>
+  <div style="width:30%"><div class="label">Time</div><div class="hp"><div id="timeBar" class="hpFill"></div></div></div>
+</div>
+
+<div class="centerText" id="centerMsg" style="display:none;"></div>
+
+<div class="hud">
+  <div class="leftCluster">
+    <div class="btn small" id="leftBtn">◀</div>
+    <div class="btn small" id="rightBtn">▶</div>
+    <div class="btn small" id="jumpBtn">⤴</div>
+  </div>
+  <div style="width:24px"></div>
+  <div class="rightCluster">
+    <div class="btn" id="punchBtn">P</div>
+    <div class="btn" id="kickBtn">K</div>
+    <div class="btn" id="specBtn">S</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---- canvas setup (DPR + HUD-safe) ----
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const hudH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hudH')) || 120;
+  function resize(){
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const w = Math.floor(window.innerWidth * dpr);
+    const h = Math.floor((window.innerHeight - hudH()) * dpr);
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = '100vw';
+    canvas.style.height = `calc(100vh - ${hudH()}px)`;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    worldW = canvas.width / dpr;
+    worldH = canvas.height / dpr;
+    groundY = worldH - 36;
+  }
+  let worldW=800, worldH=400, groundY=360;
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  resize();
+
+  // ---- helpers ----
+  const rand = (a,b)=> a + Math.random()*(b-a);
+  const clamp = (v,a,b)=> Math.max(a,Math.min(b,v));
+
+  // ---- game state ----
+  const COLORS = ['#e63946','#2a9d8f','#457b9d','#f4a261','#9b5de5','#ffb4a2'];
+  const fighters = []; // five AI + hero
+  const N = 6;
+  let heroIndex = N-1;
+  let timeElapsed = 0;
+  let lastTs = performance.now();
+  let enemiesAlive = 5;
+
+  // ---- fighter prototype ----
+  function makeFighter(x, color, isHero=false){
+    return {
+      x, y: groundY,
+      vx:0, vy:0,
+      facing: isHero ? 1 : (Math.random()<0.5?1:-1),
+      color,
+      hp: 100,
+      maxHp:100,
+      isHero,
+      aiTimer: rand(200,800),
+      state: 'idle', // idle, run, punch, kick, backkick, flip, stun, down
+      stateTimer: 0,
+      canAttack: true,
+      onGround: true
+    };
+  }
+  
+   const heroHPEl = document.getElementById('heroHP');
+  const enemyHPEl = document.getElementById('enemyHP');
+  const timeBarEl = document.getElementById('timeBar');
+  function updateHPBars(){
+    if (!heroHPEl || !enemyHPEl) return; // Safety check
+  
+    const hero = fighters[heroIndex];
+	    if (!hero) return; // Ensure hero exists
+		
+    heroHPEl.style.width = ((hero.hp/hero.maxHp)*100) + '%';
+    const alive = fighters.filter(f=>!f.isHero && f.hp>0).length;
+    enemyHPEl.style.width = ((alive / (N-1)) * 100) + '%';
+  }
+    //initFighters();
+
+  // place 6 positions across stage
+  function initFighters(){
+    fighters.length = 0;
+    const w = worldW;
+    const gap = Math.min(160, Math.max(110, worldW/7));
+    const start = (worldW - gap*5)/2;
+    for(let i=0;i<N;i++){
+      const x = start + i*gap;
+      fighters.push(makeFighter(x, COLORS[i%COLORS.length], i===heroIndex));
+    }
+    enemiesAlive = fighters.filter(f=>!f.isHero).length;
+    updateHPBars();
+  }
+  initFighters();
+
+  // ---- drawing stick ----
+  function drawStick(f){
+    const x = f.x, y = f.y;
+    const color = f.color;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+
+    // shadow
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath(); ctx.ellipse(x, groundY+8, 20, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const headY = y - 36;
+    ctx.beginPath(); ctx.arc(x, headY, 7, 0, Math.PI*2); ctx.stroke();
+    // body
+    ctx.beginPath(); ctx.moveTo(x, headY+8); ctx.lineTo(x, y-6); ctx.stroke();
+    // arms: vary by state
+    let armF = {x: x+18, y: headY+8}, armB = {x: x-16, y: headY+12};
+    if(f.state === 'punch'){ armF.x += 18; armF.y -= 6; }
+    if(f.state === 'kick'){ armF.x += 8; armF.y += 8; }
+    if(f.state === 'backkick'){ armB.x -= 6; armB.y += 4; }
+    if(f.state === 'flip'){ /* arms tucked */ armF.y -= 6; armB.y -= 6; }
+    ctx.beginPath(); ctx.moveTo(x, headY+8); ctx.lineTo(armB.x, armB.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, headY+8); ctx.lineTo(armF.x, armF.y); ctx.stroke();
+
+    // legs
+    let kneeF = {x:x+8, y:y+6}, footF = {x:x+16, y:y+20};
+    let kneeB = {x:x-8, y:y+6}, footB = {x:x-18, y:y+20};
+    if(f.state === 'kick'){ kneeF.x += 30; footF.x += 44; footF.y -= 10; }
+    if(f.state === 'backkick'){ kneeB.x -= 28; footB.x -= 48; footB.y -= 6; }
+    if(f.state === 'flip'){ kneeF.y -= 30; footF.y -= 36; kneeB.y -= 30; footB.y -= 36; }
+    ctx.beginPath(); ctx.moveTo(x, y-6); ctx.lineTo(kneeB.x, kneeB.y); ctx.lineTo(footB.x, footB.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y-6); ctx.lineTo(kneeF.x, kneeF.y); ctx.lineTo(footF.x, footF.y); ctx.stroke();
+
+    // if down/stunned
+    if(f.state === 'down' || f.hp<=0){
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath(); ctx.moveTo(x-20, y+6); ctx.lineTo(x+20, y+26); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---- physics & collision ----
+  function applyPhysics(f, dt){
+    // integrate
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    // gravity
+    if(f.y < groundY){ f.vy += 1200 * dt; f.onGround = false; }
+    else { f.vy = 0; f.y = groundY; f.onGround = true; }
+    // friction
+    f.vx *= f.onGround ? 0.9 : 0.99;
+    // bounds
+    f.x = clamp(f.x, 40, worldW-40);
+  }
+
+  // simple hit test between attacker and target
+  function tryHit(attacker, target, type){
+    if(!attacker.canAttack) return false;
+    if(attacker.stateTimer > 0.3) return false; // only early frames effective
+    const reach = type==='punch' ? 38 : type==='kick' ? 56 : (type==='backkick'?56:60);
+    const dx = (target.x - attacker.x) * attacker.facing;
+    const dy = Math.abs(target.y - attacker.y);
+    if(dx > 0 && dx < reach && dy < 40){
+      // apply damage & knockback
+      const dmg = type==='punch' ? 8 : type==='kick' ? 14 : (type==='backkick'?16:18);
+      const kb = (type==='punch'? 120 : type==='kick'? 220 : 260);
+      target.hp = clamp(target.hp - dmg, 0, target.maxHp);
+      target.vx += attacker.facing * kb * 0.0015;
+      target.vy -= (type==='kick'? 140 : 80) * 0.01;
+      target.state = 'stun';
+      target.stateTimer = 0.25;
+      spawnImpact(target.x + attacker.facing*20, target.y-20);
+      updateHPBars();
+      return true;
+    }
+    return false;
+  }
+
+  // ---- particle impact ----
+  const particles = [];
+  function spawnImpact(x,y,color='#ffd29a',n=12){
+    for(let i=0;i<n;i++){
+      particles.push({
+        x,y,
+        vx: rand(-100,100)/60,
+        vy: rand(-220,-60)/60,
+        life: rand(0.2,0.6),
+        color
+      });
+    }
+  }
+  function stepParticles(dt){
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.vy += 9.8 * dt * 6;
+      p.life -= dt;
+      if(p.life <= 0) particles.splice(i,1);
+    }
+  }
+  function drawParticles(){
+    for(const p of particles){
+      ctx.globalAlpha = Math.max(0, p.life/0.6);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x-1.5, p.y-1.5, 3,3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- AI ----
+  function simpleAI(f, dt){
+    if(f.isHero) return;
+    if(f.hp<=0) { f.state='down'; return; }
+    f.aiTimer -= dt*1000;
+    if(f.aiTimer <= 0){
+      f.aiTimer = rand(400,1200);
+      // choose action
+      const r = Math.random();
+      if(r < 0.35) { // approach / run
+        f.state = 'run';
+        f.vx = 60 * (Math.random()<0.5? -1:1);
+      } else if(r < 0.6){
+        f.state = 'punch';
+        f.stateTimer = 0;
+        f.canAttack = false;
+      } else if(r < 0.82){
+        f.state = 'kick';
+        f.stateTimer = 0;
+        f.canAttack = false;
+      } else if(r < 0.95 && f.onGround){
+        f.state = 'flip';
+        f.stateTimer = 0;
+        f.vy = -380; f.onGround=false;
+        f.canAttack = false;
+      } else {
+        f.state = 'idle';
+        f.vx = 0;
+      }
+    }
+    // choose nearest opponent to attack
+    const target = findNearestEnemy(f);
+    if(target){
+      f.facing = (target.x >= f.x) ? 1 : -1;
+      if(f.state === 'run'){
+        // go toward target
+        const dir = f.facing;
+        f.vx = dir * 140 * 0.4;
+      }
+      // if attacking attempt to hit in update loop
+    }
+  }
+
+  function findNearestEnemy(f){
+    let best=null, bd=1e9;
+    for(const t of fighters){
+      if(t === f) continue;
+      if(t.hp<=0) continue;
+      const d = Math.abs(t.x - f.x);
+      if(d < bd){ bd = d; best = t; }
+    }
+    return best;
+  }
+
+  // ---- input (keyboard + touch) ----
+  const keys = {};
+  window.addEventListener('keydown', e=>{ keys[e.key.toLowerCase()] = true; });
+  window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+
+  // touch HUD
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const punchBtn = document.getElementById('punchBtn');
+  const kickBtn = document.getElementById('kickBtn');
+  const specBtn = document.getElementById('specBtn');
+
+  function bindHold(el, key){
+    let down=false;
+    const start = e=>{ e.preventDefault(); down=true; keys[key]=true; };
+    const end = e=>{ e && e.preventDefault(); down=false; keys[key]=false; };
+    el.addEventListener('touchstart', start, {passive:false}); el.addEventListener('mousedown', start);
+    el.addEventListener('touchend', end); el.addEventListener('mouseup', end); el.addEventListener('mouseleave', end);
+  }
+  bindHold(leftBtn, 'arrowleft'); bindHold(rightBtn, 'arrowright');
+  bindHold(jumpBtn, ' '); // space
+  // action buttons map to single events (punch/kick/spec)
+  function bindTap(el, keyOrFn){
+    const act = e=>{ e.preventDefault(); if(typeof keyOrFn === 'string') { keys[keyOrFn]=true; setTimeout(()=>keys[keyOrFn]=false, 100); } else keyOrFn(); };
+    el.addEventListener('touchstart', act, {passive:false}); el.addEventListener('click', act);
+  }
+  bindTap(punchBtn, 'j'); bindTap(kickBtn, 'k');
+  bindTap(specBtn, ()=>{ keys['s']=true; setTimeout(()=>keys['s']=false,200); });
+
+  // also make keyboard mapping: arrow keys + a/d/w/j/k/s
+  // left: ArrowLeft or 'a', right: ArrowRight or 'd', jump: 'w' or space, punch:'j', kick:'k', special:'s'
+
+  // ---- HUD updates ----
+  //window.addEventListener('DOMContentLoaded', () => {
+ 
+//});
+
+  // ---- game loop ----
+  function update(dt){
+    timeElapsed += dt;
+    // hero controls
+    const hero = fighters[heroIndex];
+    if(hero.hp > 0){
+      // movement input
+      let left = keys['arrowleft'] || keys['a'];
+      let right = keys['arrowright'] || keys['d'];
+      let jump = keys['w'] || keys[' '];
+      // attack input
+      const punch = keys['j'];
+      const kick = keys['k'];
+      const spec = keys['s'];
+
+      // facing by nearest enemy or movement
+      const nearest = findNearestEnemy(hero);
+      if(nearest) hero.facing = (nearest.x >= hero.x) ? 1 : -1;
+
+      // movement
+      if(left && !right){ hero.vx = -180; hero.state = 'run'; hero.facing = -1; }
+      else if(right && !left){ hero.vx = 180; hero.state = 'run'; hero.facing = 1; }
+      else { if(hero.onGround) { hero.vx *= 0.9; if(Math.abs(hero.vx) < 10) hero.vx = 0; if(hero.state==='run') hero.state='idle'; } }
+
+      // jump
+      if(jump && hero.onGround){ hero.vy = -420; hero.onGround = false; hero.state='jump'; keys['w']=false; keys[' ']=false; }
+
+      // attacks
+      if(punch && hero.canAttack && hero.onGround){
+        hero.state = 'punch'; hero.stateTimer = 0; hero.canAttack = false;
+        setTimeout(()=> hero.canAttack = true, 300);
+      } else if(kick && hero.canAttack && hero.onGround){
+        hero.state = 'kick'; hero.stateTimer = 0; hero.canAttack = false;
+        setTimeout(()=> hero.canAttack = true, 420);
+      } else if(spec && hero.canAttack && hero.onGround){
+        // special: flip kick (longer cooldown)
+        hero.state = 'flip'; hero.stateTimer = 0; hero.canAttack = false;
+        hero.vy = -360; hero.onGround=false;
+        setTimeout(()=> hero.canAttack = true, 900);
+      }
+    }
+
+    // AI updates and generic per-fighter updates
+    for(const f of fighters){
+      if(f.hp <= 0){
+        f.state = 'down'; continue;
+      }
+      if(!f.isHero) simpleAI(f, dt);
+      // timers
+      f.stateTimer += dt;
+      // handle states with durations
+      if(f.state === 'punch' || f.state === 'kick' || f.state === 'backkick' || f.state === 'flip'){
+        // attack attempt near start of attack
+        if(f.stateTimer < 0.12){
+          // find targets in front
+          const target = findNearestEnemy(f);
+          if(target && target !== f){
+            if(f.isHero ? tryHit(f, target, f.state==='punch'?'punch':(f.state==='kick'?'kick':(f.state==='backkick'?'backkick':'kick'))) 
+                        : tryHit(f, target, (f.state==='punch'?'punch':'kick'))){
+              // hit happened, small recoil
+            }
+          }
+        }
+        // finish attack after certain time
+        const dur = (f.state === 'punch') ? 0.28 : (f.state === 'kick' ? 0.42 : 0.6);
+        if(f.stateTimer > dur){ f.state='idle'; f.stateTimer=0; }
+      } else if(f.state === 'stun'){
+        if(f.stateTimer > 0.5){ f.state='idle'; f.stateTimer=0; }
+      } else if(f.state === 'down'){
+        // dead / out
+      } else if(f.state === 'run'){
+        // small drift ends
+        if(f.stateTimer > 1.2){ f.state='idle'; f.stateTimer=0; f.vx=0; }
+      }
+
+      // facing update (if not running)
+      if(!f.isHero && f.state === 'idle'){
+        const nearest = findNearestEnemy(f);
+        if(nearest) f.facing = (nearest.x >= f.x) ? 1 : -1;
+      }
+
+      // constrain vx based on state
+      if(f.state === 'flip'){ /* airborne */ }
+      if(Math.abs(f.vx) > 420) f.vx = 420 * Math.sign(f.vx);
+
+      // apply physics
+      applyPhysics(f, dt);
+    }
+
+    // step particles
+    stepParticles(dt);
+
+    // update HUD
+    updateHPBars();
+    timeBarElUpdate(dt);
+  }
+
+  // time bar update for 60s indicator
+  const timeBar = document.getElementById('timeBar');
+  function timeBarElUpdate(dt){
+    timeElapsed += dt;
+    const oneMin = 60; // sec
+    const pct = ((timeElapsed%oneMin)/oneMin) * 100;
+    timeBar.style.width = pct + '%';
+  }
+
+  // ---- rendering ----
+  function render(){
+    // clear
+    ctx.clearRect(0,0, canvas.width, canvas.height);
+    // camera: simple centered view on hero area
+    const hero = fighters[heroIndex];
+    const camX = clamp(hero.x, worldW*0.25, worldW*0.75);
+    const camY = worldH/2;
+    ctx.save();
+    ctx.translate(0,0); // no fancy camera for simplicity
+    // background ground
+    ctx.fillStyle = '#0b1620';
+    ctx.fillRect(0,0, worldW, worldH);
+    // draw ground line
+    ctx.strokeStyle = '#1c2a34'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, groundY+12); ctx.lineTo(worldW, groundY+12); ctx.stroke();
+
+    // draw fighters sorted by y (depth)
+    const drawList = fighters.slice().sort((a,b)=> a.y - b.y);
+    for(const f of drawList){
+      drawStick(f);
+    }
+    drawParticles();
+    ctx.restore();
+  }
+
+  // ---- game loop driver ----
+  let running = true;
+  function tick(ts){
+    const now = ts;
+    const dt = Math.min(0.05, (now - lastTs) / 1000);
+    lastTs = now;
+    // update inputs normalized mapping (keyboard to internal keys)
+    // provide mapping: arrow keys or A/D for movement, W/space for jump, J punch, K kick, S special
+    if(keys['arrowleft'] || keys['a']) keys['arrowleft']=true;
+    if(keys['arrowright'] || keys['d']) keys['arrowright']=true;
+    if(keys['w'] || keys[' ']) keys['w']=true;
+
+    update(dt);
+    render();
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---- HUD helper to show center messages ----
+  const centerMsg = document.getElementById('centerMsg');
+  function showCenter(text, ms=1500){
+    centerMsg.style.display = 'block';
+    centerMsg.textContent = text;
+    setTimeout(()=>{ centerMsg.style.display = 'none'; }, ms);
+  }
+
+  // ---- restart function ----
+  function restart(){
+    timeElapsed = 0; lastTs = performance.now();
+    initFighters();
+    particles.length = 0;
+    showCenter('Restarted', 1000);
+  }
+
+  // replay/pause buttons via double click on HUD buttons? provide simple keyboard support
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'r') restart();
+    if(e.key === 'p') { running = !running; if(running) requestAnimationFrame(tick); }
+  });
+
+  // expose restart on long-press spec button
+  specBtn.addEventListener('contextmenu', e=>{ e.preventDefault(); restart(); });
+
+  // initial HUD fill
+  updateHPBars();
+})();
+</script>
+</body>
+</html>

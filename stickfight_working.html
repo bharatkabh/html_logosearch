@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>Stick Fight – HTML5</title>
+<style>
+  :root { --hudH: 110px; }
+  html, body { margin:0; padding:0; height:100%; background:#0b0c10; font-family:system-ui,arial,sans-serif; }
+  canvas { display:block; width:100vw; height:calc(100vh - var(--hudH)); background:linear-gradient(#1f2833,#0b0c10); touch-action:none; }
+  /* HUD */
+  .hud {
+    position:fixed; bottom:0; left:0; width:100%;
+    height:var(--hudH); background:rgba(15,15,20,.85); backdrop-filter: blur(6px);
+    display:flex; gap:10px; align-items:center; justify-content:center; padding:10px;
+    box-sizing:border-box; user-select:none; -webkit-user-select:none;
+  }
+  .dpad { display:flex; gap:10px; }
+  .btn, .pad {
+    width:58px; height:58px; border-radius:14px; border:1px solid #303642; color:#e5e7eb;
+    background:linear-gradient(180deg,#2b3240,#1f2430);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 6px 16px rgba(0,0,0,.35);
+    display:flex; align-items:center; justify-content:center; font-weight:700;
+  }
+  .btn:active, .pad:active { transform:translateY(2px); filter:brightness(1.15); }
+  .cluster { display:flex; gap:10px; }
+  .cluster .btn { width:64px; height:64px; }
+  .small { width:52px; height:52px; font-size:.9rem; }
+  /* Top HUD (health bars) */
+  .topbar {
+    position:fixed; top:8px; left:50%; transform:translateX(-50%);
+    width:min(960px, 92vw); display:flex; justify-content:space-between; gap:10px; z-index:5;
+  }
+  .bar { flex:1; height:16px; background:#2a2f3a; border-radius:10px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.35) inset; }
+  .fill { height:100%; background:linear-gradient(90deg,#ef4444,#dc2626); width:100%; }
+  .bar.you .fill { background:linear-gradient(90deg,#22c55e,#16a34a); }
+  .names { position:absolute; top:-18px; width:100%; display:flex; justify-content:space-between; font-size:12px; color:#c7ccd6; text-shadow:0 1px 2px #000; }
+  .centerMsg {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    color:#e5e7eb; font-weight:800; letter-spacing:.03em; text-align:center; z-index:6; pointer-events:none;
+    text-shadow:0 2px 6px rgba(0,0,0,.6);
+  }
+  .centerMsg .big { font-size:40px; }
+  .centerMsg .small { font-size:14px; opacity:.8; margin-top:6px; }
+  @media (min-width: 900px) {
+    :root { --hudH: 90px; }
+    .cluster .btn { width:58px; height:58px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- Top HUD -->
+<div class="topbar">
+  <div class="bar you"><div class="fill" id="hp1"></div></div>
+  <div class="bar"><div class="fill" id="hp2"></div></div>
+  <div class="names"><span>YOU</span><span>AI</span></div>
+</div>
+
+<!-- Center messages -->
+<div class="centerMsg" id="msg" style="display:none;">
+  <div class="big" id="msgBig"></div>
+  <div class="small" id="msgSmall"></div>
+</div>
+
+<!-- Bottom HUD / Controls -->
+<div class="hud" id="hud">
+  <div class="dpad">
+    <div class="pad small" data-hold="left">◀</div>
+    <div class="pad small" data-hold="right">▶</div>
+    <div class="pad small" data-tap="jump">⤴</div>
+  </div>
+  <div style="width:24px"></div>
+  <div class="cluster">
+    <div class="btn" data-tap="punch">J</div>
+    <div class="btn" data-tap="kick">K</div>
+    <div class="btn" data-hold="block">L</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // Layout: canvas fills area above HUD
+  const hud = document.getElementById('hud');
+  function fit() {
+    const hudH = hud.getBoundingClientRect().height || 110;
+    canvas.width  = Math.floor(window.innerWidth * devicePixelRatio);
+    canvas.height = Math.floor((window.innerHeight - hudH) * devicePixelRatio);
+    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  }
+  window.addEventListener('resize', fit, {passive:true});
+  window.addEventListener('orientationchange', fit, {passive:true});
+  fit();
+
+  // World
+  const GROUND_Y = () => canvas.height / devicePixelRatio - 30; // ground line
+  const GRAV = 0.8;
+  const FRICTION = 0.85;
+  const MAX_RUN = 6;
+  const STUN_TIME = 320; // ms
+  const PUNCH_RANGE = 46;
+  const KICK_RANGE = 56;
+
+  // Input
+  const keys = { left:false, right:false, jump:false, punch:false, kick:false, block:false };
+  // Keyboard
+  const down = e => {
+    switch(e.code){
+      case 'KeyA': case 'ArrowLeft': keys.left = true; break;
+      case 'KeyD': case 'ArrowRight': keys.right = true; break;
+      case 'KeyW': case 'ArrowUp': case 'Space': keys.jump = true; break;
+      case 'KeyJ': keys.punch=true; break;
+      case 'KeyK': keys.kick=true; break;
+      case 'KeyL': keys.block=true; break;
+    }
+  };
+  const up = e => {
+    switch(e.code){
+      case 'KeyA': case 'ArrowLeft': keys.left = false; break;
+      case 'KeyD': case 'ArrowRight': keys.right = false; break;
+      case 'KeyW': case 'ArrowUp': case 'Space': keys.jump = false; break;
+      case 'KeyJ': keys.punch=false; break;
+      case 'KeyK': keys.kick=false; break;
+      case 'KeyL': keys.block=false; break;
+    }
+  };
+  window.addEventListener('keydown', down);
+  window.addEventListener('keyup', up);
+
+  // Touch controls
+  const holds = new Set();
+  function setHold(name, val){ if(val) holds.add(name); else holds.delete(name); syncHolds(); }
+  function syncHolds(){
+    keys.left  = holds.has('left');
+    keys.right = holds.has('right');
+    keys.block = holds.has('block');
+  }
+  function addBtnLogic(el){
+    const holdName = el.dataset.hold;
+    const tapName  = el.dataset.tap;
+    if(holdName){
+      const on = (e)=>{ e.preventDefault(); setHold(holdName, true); };
+      const off= (e)=>{ e.preventDefault(); setHold(holdName, false); };
+      el.addEventListener('touchstart', on,{passive:false});
+      el.addEventListener('touchend', off,{passive:false});
+      el.addEventListener('mousedown', on);
+      el.addEventListener('mouseup', off);
+      el.addEventListener('mouseleave', off);
+    }
+    if(tapName){
+      const tap = (e)=>{ e.preventDefault(); if(tapName==='jump'){ keys.jump=true; setTimeout(()=>keys.jump=false, 60); }
+                         if(tapName==='punch'){ triggerAttack(player,'punch'); }
+                         if(tapName==='kick'){ triggerAttack(player,'kick'); } };
+      el.addEventListener('touchstart', tap,{passive:false});
+      el.addEventListener('click', tap);
+    }
+  }
+  document.querySelectorAll('.hud .btn, .hud .pad').forEach(addBtnLogic);
+
+  // Fighter factory
+  function makeFighter(x, face = 1, isAI=false){
+    return {
+      x, y: GROUND_Y(), vx:0, vy:0, facing: face,
+      hp: 100, name: isAI ? 'AI' : 'YOU',
+      attacking: null, attackTimer:0, canAttack:true,
+      blocking:false, stunned:false, stunUntil:0,
+      isAI
+    };
+  }
+  const player = makeFighter(120, 1, false);
+  const enemy  = makeFighter(Math.min(520, (canvas.width/devicePixelRatio)-120), -1, true);
+
+  // UI bars
+  const hp1 = document.getElementById('hp1');
+  const hp2 = document.getElementById('hp2');
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  function updateFighter(f, input){
+    // Face opponent
+    f.facing = (f === player)
+      ? (enemy.x >= f.x ? 1 : -1)
+      : (player.x >= f.x ? 1 : -1);
+
+    // Stun logic
+    const now = performance.now();
+    f.stunned = now < f.stunUntil;
+
+    // Blocking (hold)
+    if(!f.stunned){
+      if(input.block) f.blocking = true; else f.blocking = false;
+    } else {
+      f.blocking = false;
+    }
+
+    // Horizontal movement
+    if(!f.stunned){
+      if(input.left && !input.right) f.vx = clamp(f.vx - 0.9, -MAX_RUN, MAX_RUN);
+      else if(input.right && !input.left) f.vx = clamp(f.vx + 0.9, -MAX_RUN, MAX_RUN);
+      else f.vx *= FRICTION;
+    } else {
+      f.vx *= 0.95;
+    }
+
+    // Jump
+    const onGround = f.y >= GROUND_Y();
+    if(onGround) { f.vy = 0; f.y = GROUND_Y(); }
+    if(input.jump && onGround && !f.stunned){ f.vy = -13; }
+
+    // Gravity
+    f.vy += GRAV;
+
+    // Integrate
+    f.x += f.vx;
+    f.y += f.vy;
+
+    // Bounds
+    const L = 20, R = (canvas.width / devicePixelRatio) - 20;
+    if(f.x < L){ f.x = L; f.vx = Math.abs(f.vx)*0.6; }
+    if(f.x > R){ f.x = R; f.vx = -Math.abs(f.vx)*0.6; }
+    if(f.y > GROUND_Y()){ f.y = GROUND_Y(); f.vy = 0; }
+
+    // Attack timer
+    if(f.attacking){
+      f.attackTimer -= 16;
+      if(f.attackTimer <= 0){ f.attacking = null; f.canAttack = true; }
+    }
+  }
+
+  function triggerAttack(f, type){
+    if(f.stunned || !f.canAttack) return;
+    f.attacking = type; f.attackTimer = (type==='punch'? 180 : 240); // ms
+    f.canAttack = false;
+    setTimeout(()=>{ f.canAttack = true; }, type==='punch'? 220 : 320);
+    // try to apply hit during early active frames
+    setTimeout(()=>tryHit(f, type), type==='punch'? 80:120);
+  }
+
+  function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+
+  function tryHit(attacker, type){
+    const defender = attacker===player ? enemy : player;
+    const range = type==='punch' ? PUNCH_RANGE : KICK_RANGE;
+    const hitPoint = { x: attacker.x + attacker.facing * (type==='punch'? 26: 32), y: attacker.y - (type==='punch'? 22: 12) };
+    const bodyPoint= { x: defender.x, y: defender.y - 24 };
+
+    if(dist(hitPoint, bodyPoint) <= range && !attacker.stunned){
+      let dmg = (type==='punch'? 8 : 14);
+      let kb  = (type==='punch'? 4.5 : 7.5);
+      if(defender.blocking){
+        dmg *= 0.35; kb *= 0.25;
+      } else {
+        defender.stunUntil = performance.now() + STUN_TIME;
+      }
+      defender.hp = clamp(defender.hp - dmg, 0, 100);
+      defender.vx += kb * attacker.facing;
+      defender.vy -= (type==='punch'? 2.0 : 3.0);
+      spawnSparks(bodyPoint.x, bodyPoint.y, type==='punch'? '#ffef9a' : '#ffd2b3');
+      if(defender.hp <= 0){ onKO(attacker, defender); }
+      updateBars();
+    }
+  }
+
+  // Simple AI
+  function aiStep(f, target){
+    if(f.stunned) return {left:false,right:false,jump:false,punch:false,kick:false,block:false};
+    const dx = target.x - f.x;
+    const distX = Math.abs(dx);
+
+    // block if player attacking and close
+    const shouldBlock = (player.attacking && distX < 70 && Math.random()<0.6);
+
+    // approach / retreat
+    let left=false, right=false;
+    const desired = 44 + Math.random()*8;
+    if(distX > desired){
+      if(dx>0) right=true; else left=true;
+    } else if(distX < desired-8){
+      if(dx>0) left=true; else right=true; // tiny retreat to keep spacing
+    }
+
+    // opportunistic attack
+    let punch=false,kick=false;
+    if(distX < 60 && Math.random()<0.06) punch=true;
+    if(distX < 70 && Math.random()<0.04) kick=true;
+
+    // occasional jump if cornered
+    const jump = ( (f.x<30 || f.x > (canvas.width/devicePixelRatio)-30) && Math.random()<0.15 );
+
+    // trigger actual attacks
+    if(punch) triggerAttack(f,'punch');
+    if(kick)  triggerAttack(f,'kick');
+
+    return {left,right,jump,punch:false,kick:false,block:shouldBlock};
+  }
+
+  // Particles (sparks on hit)
+  const parts = [];
+  function spawnSparks(x,y,color){
+    for(let i=0;i<10;i++){
+      parts.push({x,y, vx:(Math.random()*2-1)*3, vy:(Math.random()*-2-0.5), life: 26+Math.random()*16, color});
+    }
+  }
+  function stepParts(){
+    for(const p of parts){ p.x+=p.vx; p.y+=p.vy; p.vy+=0.25; p.life--; }
+    for(let i=parts.length-1;i>=0;i--) if(parts[i].life<=0) parts.splice(i,1);
+  }
+  function drawParts(){
+    for(const p of parts){
+      ctx.globalAlpha = Math.max(0,p.life/40);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x-1, p.y-1, 2, 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Draw stick figure
+  function drawF(f, color){
+    // body proportions
+    const head = {x:f.x, y:f.y-36, r:8};
+    const chest= {x:f.x, y:f.y-24};
+    const hip  = {x:f.x, y:f.y-6};
+    // arms
+    const armLen=18, legLen=20;
+    const reach = f.attacking==='punch' ? 26 : 18;
+    const foot  = f.attacking==='kick'  ? 26 : 16;
+
+    const fx = f.facing;
+
+    const handR = { x: chest.x + fx*reach, y: chest.y + (f.attacking==='punch'? -2: 2) };
+    const handL = { x: chest.x - fx*12,    y: chest.y + 6 };
+
+    const kneeR = { x: hip.x + fx*8,  y: hip.y + 12 };
+    const kneeL = { x: hip.x - fx*4,  y: hip.y + 12 };
+
+    const footR = { x: kneeR.x + fx*foot, y: kneeR.y + 12 };
+    const footL = { x: kneeL.x - fx*12,   y: kneeL.y + 12 };
+
+    // color/line
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+
+    // shadow
+    ctx.globalAlpha = 0.15;
+    ctx.beginPath(); ctx.ellipse(f.x, GROUND_Y()+6, 20, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // head
+    ctx.beginPath(); ctx.arc(head.x, head.y, head.r, 0, Math.PI*2); ctx.stroke();
+
+    // body
+    line(head, chest); line(chest, hip);
+
+    // arms
+    line(chest, handL);
+    line(chest, handR);
+
+    // legs
+    line(hip, kneeL); line(kneeL, footL);
+    line(hip, kneeR); line(kneeR, footR);
+
+    // block indicator
+    if(f.blocking){ ctx.globalAlpha = .25; ctx.fillRect(f.x-18, head.y-12, 36, 28); ctx.globalAlpha=1; }
+
+    function line(a,b){ ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
+  }
+
+  // KO / Reset
+  const msg = document.getElementById('msg');
+  const msgBig = document.getElementById('msgBig');
+  const msgSmall = document.getElementById('msgSmall');
+
+  function onKO(winner, loser){
+    showMsg(`${winner===player?'YOU WIN':'YOU LOSE'}`, 'Tap / Press any key to restart');
+    paused = true;
+    setTimeout(()=>{ waitingRestart = true; }, 300);
+  }
+
+  function showMsg(big, small){
+    msgBig.textContent = big;
+    msgSmall.textContent = small || '';
+    msg.style.display = 'block';
+  }
+  function hideMsg(){ msg.style.display='none'; }
+
+  let paused = false, waitingRestart=false;
+  function hardReset(){
+    player.x = 120; player.y=GROUND_Y(); player.vx=0; player.vy=0; player.hp=100; player.attacking=null; player.canAttack=true; player.blocking=false; player.stunned=false;
+    enemy.x  = Math.min(520,(canvas.width/devicePixelRatio)-120); enemy.y=GROUND_Y(); enemy.vx=0; enemy.vy=0; enemy.hp=100; enemy.attacking=null; enemy.canAttack=true; enemy.blocking=false; enemy.stunned=false;
+    parts.length = 0;
+    updateBars();
+    paused=false; waitingRestart=false;
+    hideMsg();
+  }
+  window.addEventListener('keydown', ()=>{ if(waitingRestart) hardReset(); });
+  canvas.addEventListener('pointerdown', ()=>{ if(waitingRestart) hardReset(); });
+
+  // Bars
+  function updateBars(){
+    hp1.style.width = player.hp+'%';
+    hp2.style.width = enemy.hp+'%';
+  }
+  updateBars();
+
+  // Game loop
+  let last = performance.now();
+  function loop(now){
+    const dt = now - last; last = now;
+    ctx.clearRect(0,0,canvas.width/devicePixelRatio, canvas.height/devicePixelRatio);
+
+    // Ground line
+    ctx.strokeStyle = '#233143';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, GROUND_Y()+10); ctx.lineTo(canvas.width/devicePixelRatio, GROUND_Y()+10); ctx.stroke();
+
+    if(!paused){
+      // Player attacks via keyboard (mobile buttons call triggerAttack directly)
+      if(keys.punch){ triggerAttack(player,'punch'); keys.punch=false; }
+      if(keys.kick){  triggerAttack(player,'kick');  keys.kick=false; }
+
+      updateFighter(player, { left:keys.left, right:keys.right, jump:keys.jump, block:keys.block });
+      const aiIn = aiStep(enemy, player);
+      updateFighter(enemy, aiIn);
+
+      stepParts();
+    }
+
+    // Draw
+    drawParts();
+    drawF(player, '#c7f9cc');
+    drawF(enemy , '#fda4af');
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Map keyboard attack keys to trigger function (for responsiveness)
+  window.addEventListener('keydown', (e)=>{
+    if(waitingRestart) return;
+    if(e.code==='KeyJ') triggerAttack(player,'punch');
+    if(e.code==='KeyK') triggerAttack(player,'kick');
+  });
+
+  // Expose punch/kick for on-screen buttons already wired above
+
+  // Make J/K/L taps on desktop HUD also work
+  document.querySelector('[data-tap="punch"]').addEventListener('click', ()=>triggerAttack(player,'punch'));
+  document.querySelector('[data-tap="kick"]').addEventListener('click', ()=>triggerAttack(player,'kick'));
+
+})();
+</script>
+</body>
+</html>
