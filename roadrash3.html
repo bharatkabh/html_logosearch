@@ -1,0 +1,596 @@
+<!doctype html>
+<!-- Version 4: Road Rash basic with kick -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
+<title>RoadRash-like Canvas Game — Punch & Kick</title>
+<style>
+  :root{ --hud-h:120px; --accent:#ffcc00; --bg:#0b1220; }
+  html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,Arial;color:#fff; -webkit-user-select:none; user-select:none; touch-action:none;}
+  canvas{display:block;width:100vw;height:calc(100vh - var(--hud-h)); background:linear-gradient(#1a222a,#0b0f15);}
+  .hud{height:var(--hud-h); box-sizing:border-box; padding:10px; display:flex; gap:12px; align-items:center; justify-content:space-between;}
+  .panel{background:rgba(255,255,255,0.04); padding:10px 12px; border-radius:8px; min-width:160px;}
+  .controls{display:flex; gap:8px; align-items:center;}
+  .btn{background:rgba(255,255,255,0.06); color:#fff; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.03); font-weight:700;}
+  .big{font-size:1.1rem; font-weight:800;}
+  /* mobile touch controls overlay */
+  .touchControls{ position:fixed; bottom:8px; left:0; right:0; display:flex; justify-content:center; gap:18px; pointer-events:none; z-index:2000;}
+  .tc-block{ pointer-events:auto; display:flex; gap:8px; align-items:center; }
+  .pad{ width:68px; height:68px; border-radius:12px; background:rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:22px; color:#fff; user-select:none; -webkit-user-select:none;}
+  .pad.sm{ width:56px; height:56px; font-size:20px; border-radius:10px;}
+  .stat{font-size:13px; opacity:0.9;}
+  .centerMsg{ position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.6); padding:10px 16px; border-radius:8px; display:none; z-index:3000; font-weight:800;}
+  @media (max-width:520px){
+    :root{ --hud-h:140px; }
+    .pad{ width:60px;height:60px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud">
+  <div class="panel">
+    <div class="big">Road Rumble — Demo</div>
+    <div class="stat" id="status">Starting...</div>
+  </div>
+
+  <div class="panel" style="min-width:320px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <div>Speed <span id="speedDisplay">0</span></div>
+      <div>Lap <span id="lapDisplay">0</span>/<span id="totalLaps">3</span></div>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <div>Health <span id="hpDisplay">100</span>%</div>
+      <div>Time <span id="timeDisplay">0:00</span></div>
+    </div>
+  </div>
+
+  <div class="panel controls">
+    <button class="btn" id="restartBtn">Restart</button>
+    <div style="width:10px;"></div>
+    <button class="btn" id="pauseBtn">Pause</button>
+  </div>
+</div>
+
+<!-- Touch controls: left/right, accel/brake, punch (⚔) and kick (K) -->
+<div class="touchControls" id="touchControls">
+  <div class="tc-block">
+    <div class="pad" id="leftBtn">◀</div>
+    <div class="pad" id="rightBtn">▶</div>
+  </div>
+  <div class="tc-block">
+    <div class="pad sm" id="accelBtn">▲</div>
+    <div class="pad sm" id="brakeBtn">▼</div>
+  </div>
+  <div class="tc-block">
+    <div class="pad" id="attackBtn">⚔</div>
+    <div class="pad" id="kickBtn">K</div>
+  </div>
+</div>
+
+<div class="centerMsg" id="centerMsg">Paused</div>
+
+<script>
+(() => {
+
+// --- ROADSIDE OBJECTS ---
+const roadsideObjects = [];
+const SIDE_OBJECT_SPACING = 200; // distance between objects along y
+
+function initSideObjects() {
+  roadsideObjects.length = 0;
+  const objectTypes = ['tree','house','bush','lamp'];
+  for(let i=0;i<500;i++){
+    const type = objectTypes[Math.floor(Math.random()*objectTypes.length)];
+    const side = Math.random()<0.5 ? -1 : 1; // left=-1, right=1
+    const xOffset = (ROAD_WIDTH()/2 + 20 + Math.random()*60) * side + CENTER_X;
+    roadsideObjects.push({
+      type, x: xOffset,
+      y: i * SIDE_OBJECT_SPACING + Math.random()*50
+    });
+  }
+}
+
+function ROAD_WIDTH() { return TRACK_WIDTH; }
+
+// Draw roadside objects
+function drawSideObjects() {
+  const w = canvas.width/(window.devicePixelRatio||1);
+  const h = canvas.height/(window.devicePixelRatio||1);
+  roadsideObjects.forEach(obj => {
+    const screenY = h - ((obj.y - player.y) * 0.25 + h*0.35);
+    if(screenY < -50 || screenY > h+50) return; // skip off-screen
+
+    const scale = 1 + ( (h - screenY) / (h*2) );
+    const screenX = obj.x;
+
+    switch(obj.type){
+      case 'tree':
+        ctx.fillStyle = 'green';
+        ctx.beginPath();
+        ctx.moveTo(screenX, screenY);
+        ctx.lineTo(screenX-10*scale, screenY+30*scale);
+        ctx.lineTo(screenX+10*scale, screenY+30*scale);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(screenX-2*scale, screenY+30*scale, 4*scale, 10*scale);
+        break;
+      case 'house':
+        ctx.fillStyle = '#aa4444';
+        ctx.fillRect(screenX-12*scale, screenY-12*scale, 24*scale, 24*scale);
+        ctx.fillStyle = '#882222';
+        ctx.beginPath();
+        ctx.moveTo(screenX-14*scale, screenY-12*scale);
+        ctx.lineTo(screenX, screenY-28*scale);
+        ctx.lineTo(screenX+14*scale, screenY-12*scale);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case 'bush':
+        ctx.fillStyle = 'darkgreen';
+        ctx.beginPath();
+        ctx.arc(screenX, screenY+4*scale, 8*scale, 0, Math.PI*2);
+        ctx.fill();
+        break;
+      case 'lamp':
+        ctx.fillStyle = '#cccc33';
+        ctx.fillRect(screenX-1*scale, screenY-12*scale, 2*scale, 12*scale);
+        ctx.beginPath();
+        ctx.arc(screenX, screenY-12*scale, 4*scale, 0, Math.PI*2);
+        ctx.fill();
+        break;
+    }
+  });
+}
+
+
+
+
+
+
+ const oldLoop = loop; // preserve original loop
+  const PLAYER_MAX_SPEED = 4.6;      // slightly higher max speed
+  const PLAYER_ACCEL = 220;          // slightly stronger acceleration
+  const PLAYER_BRAKE = 280;          // normal brake
+  const TURN_MULT = 1.05;            // slight faster turning
+
+  function loop(ts) {
+    if (paused || !started) { last = performance.now(); return; }
+    const now = ts || performance.now();
+    let dt = Math.min(0.05, (now - last)/1000);
+    last = now;
+    elapsed = (now - startTime)/1000;
+
+    const steerLeft = keys['arrowleft'] || keys['a'] || keys['left'];
+    const steerRight = keys['arrowright'] || keys['d'] || keys['right'];
+    const accel = keys['arrowup'] || keys['w'] || keys['up'];
+    const brake = keys['arrowdown'] || keys['s'] || keys['down'];
+    const punch = keys[' '] || keys['j'] || keys['punch'];
+    const kick = keys['k'] || keys['kick'];
+
+    // Player physics
+    if (accel) player.v += PLAYER_ACCEL * dt * 0.01; else player.v -= 120 * dt * 0.01;
+    if (brake) player.v -= PLAYER_BRAKE * dt * 0.01;
+    player.v = clamp(player.v, 0, PLAYER_MAX_SPEED);
+
+    const turnPower = 120 * (player.v/2.2) * dt * TURN_MULT;
+    if (steerLeft) player.x -= turnPower;
+    if (steerRight) player.x += turnPower;
+    player.x = clamp(player.x, ROAD_LEFT + player.width/2, ROAD_RIGHT - player.width/2);
+
+    player.y += player.v * 60 * dt;
+    roadOffset += player.v * 160 * dt;
+
+    // Manage cooldowns & timers
+    if (player.punchCooldown > 0) player.punchCooldown = Math.max(0, player.punchCooldown - dt);
+    if (player.kickCooldown > 0) player.kickCooldown = Math.max(0, player.kickCooldown - dt);
+    if (player.punchTimer > 0) player.punchTimer = Math.max(0, player.punchTimer - dt);
+    if (player.kickTimer > 0) player.kickTimer = Math.max(0, player.kickTimer - dt);
+
+    // PUNCH handling (slightly stronger & wider range)
+    if (punch && player.punchCooldown <= 0) {
+      player.punchCooldown = 0.5;     // shorter cooldown
+      player.punchTimer = 0.14;       // active window
+      enemies.forEach(e => {
+        if (!e.crashed && e.hp>0 && Math.abs(e.y - player.y) < 72 && Math.abs(e.x - player.x) < 56) {
+          e.v *= 0.65;
+          e.hp -= 20;
+          e.x += (e.x < player.x) ? -10 : 10;
+        }
+      });
+    }
+
+    // KICK handling (stronger & wider)
+    if (kick && player.kickCooldown <= 0) {
+      player.kickCooldown = 1.0;      // shorter cooldown
+      player.kickTimer = 0.2;         // active window
+      enemies.forEach(e => {
+        if (!e.crashed && e.hp>0 && Math.abs(e.y - player.y) < 80 && Math.abs(e.x - player.x) < 88) {
+          e.hp -= 32;
+          e.v *= 0.45;
+          e.x += (e.x < player.x) ? -20 : 20;
+          e.stun = Math.max(e.stun, 0.65);
+        }
+      });
+    }
+
+    oldLoop(ts); // call original loop for rest of logic
+  }
+
+  window.loop = loop; 
+
+
+
+  // Canvas setup
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor((window.innerHeight - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hud-h')))*dpr);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = (window.innerHeight - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--hud-h'))) + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Game constants
+  const TRACK_WIDTH = canvas.width / (window.devicePixelRatio||1) * 0.6;
+  const CENTER_X = canvas.width / (window.devicePixelRatio||1) / 2;
+  const ROAD_LEFT = CENTER_X - TRACK_WIDTH/2;
+  const ROAD_RIGHT = CENTER_X + TRACK_WIDTH/2;
+  const STARTING_LAPS = 3;
+
+  // Rider class
+  class Rider {
+    constructor(x, color = 'red', isPlayer=false) {
+      this.x = x;              // horizontal position (world coords)
+      this.y = 0;              // distance along track (increasing)
+      this.v = 0;              // forward speed
+      this.width = 34;
+      this.height = 46;
+      this.color = color;
+      this.hp = 100;
+      this.isPlayer = !!isPlayer;
+      this.crashed = false;
+      this.score = 0;
+      this.lap = 0;
+      this.punchCooldown = 0;
+      this.kickCooldown = 0;
+      this.punchTimer = 0;
+      this.kickTimer = 0;
+      this.id = Math.random().toString(36).slice(2,7);
+      this.stun = 0;
+    }
+    rect() { return {left: this.x - this.width/2, right:this.x+this.width/2, top:this.y - this.height, bottom:this.y}; }
+  }
+
+  // world state
+  let player, enemies, roadOffset = 0;
+  let paused = false;
+  let started = false;
+  let startTime = 0;
+  let elapsed = 0;
+  let totalLaps = STARTING_LAPS;
+  let finishOrder = [];
+  let centerMsg = document.getElementById('centerMsg');
+
+  function initGame() {
+    player = new Rider(CENTER_X, '#ff4d4f', true);
+    player.v = 0; player.y = 0; player.lap = 0; player.hp = 100;
+    enemies = [];
+    const N = 6;
+    for (let i=0;i<N;i++){
+      const laneX = CENTER_X + (Math.random()*TRACK_WIDTH - TRACK_WIDTH/2) * 0.6;
+      const r = new Rider(laneX, randomColor(), false);
+      r.y = -i * 60 - 200;
+      r.v = 1.2 + Math.random()*0.6;
+      enemies.push(r);
+    }
+    roadOffset = 0;
+    paused = false;
+    started = true;
+    startTime = performance.now();
+    elapsed = 0;
+    finishOrder = [];
+    updateHUD();
+    last = performance.now();
+    loop();
+    console.log('Game initialized', {player, enemiesCount: enemies.length});
+	initSideObjects();
+  }
+
+  // controls
+  const keys = {};
+  window.addEventListener('keydown', (e)=>{ keys[e.key.toLowerCase()] = true; });
+  window.addEventListener('keyup', (e)=>{ keys[e.key.toLowerCase()] = false; });
+
+  // touch buttons
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const accelBtn = document.getElementById('accelBtn');
+  const brakeBtn = document.getElementById('brakeBtn');
+  const attackBtn = document.getElementById('attackBtn');
+  const kickBtn = document.getElementById('kickBtn');
+
+  addTouch(leftBtn,'left'); addTouch(rightBtn,'right'); addTouch(accelBtn,'up'); addTouch(brakeBtn,'down');
+  addTouch(attackBtn,'punch'); addTouch(kickBtn,'kick');
+  function addTouch(el, key){
+    if(!el) return;
+    el.addEventListener('touchstart', (e)=>{ e.preventDefault(); keys[key]=true; }, {passive:false});
+    el.addEventListener('touchend', (e)=>{ e.preventDefault(); keys[key]=false; }, {passive:false});
+    el.addEventListener('mousedown', (e)=>{ e.preventDefault(); keys[key]=true; });
+    el.addEventListener('mouseup', (e)=>{ e.preventDefault(); keys[key]=false; });
+    el.addEventListener('mouseleave', (e)=>{ keys[key]=false; });
+  }
+
+  // UI buttons
+  document.getElementById('restartBtn').addEventListener('click', ()=>{ initGame(); });
+  const pauseBtn = document.getElementById('pauseBtn');
+  pauseBtn.addEventListener('click', ()=>{
+    paused = !paused;
+    centerMsg.style.display = paused ? 'block' : 'none';
+    centerMsg.textContent = paused ? 'Paused' : '';
+    pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    if(!paused) { startTime = performance.now() - elapsed*1000; last = performance.now(); loop(); }
+  });
+
+  // HUD updater
+  function formatTime(s){
+    const mm = Math.floor(s/60), ss = Math.floor(s%60);
+    return mm + ':' + (ss<10? '0'+ss : ss);
+  }
+  function updateHUD(){
+    document.getElementById('speedDisplay').textContent = Math.round(player.v*60);
+    document.getElementById('lapDisplay').textContent = player.lap;
+    document.getElementById('totalLaps').textContent = totalLaps;
+    document.getElementById('hpDisplay').textContent = Math.max(0,Math.round(player.hp));
+    document.getElementById('timeDisplay').textContent = formatTime(elapsed);
+    document.getElementById('status').textContent = `Opponents: ${enemies.filter(e=>!e.crashed && e.hp>0).length} — Finishers: ${finishOrder.length}`;
+  }
+
+  // main loop
+  let last = performance.now();
+  function loop(ts) {
+    if (paused || !started) { last = performance.now(); return; }
+    const now = ts || performance.now();
+    let dt = Math.min(0.05, (now - last)/1000);
+    last = now;
+    elapsed = (now - startTime)/1000;
+
+    // input flags
+    const steerLeft = keys['arrowleft'] || keys['a'] || keys['left'];
+    const steerRight = keys['arrowright'] || keys['d'] || keys['right'];
+    const accel = keys['arrowup'] || keys['w'] || keys['up'];
+    const brake = keys['arrowdown'] || keys['s'] || keys['down'];
+    const punch = keys[' '] || keys['j'] || keys['punch'];
+    const kick = keys['k'] || keys['kick'];
+
+    // player physics
+    if (accel) player.v += 180 * dt * 0.01; else player.v -= 120 * dt * 0.01;
+    if (brake) player.v -= 260 * dt * 0.01;
+    player.v = clamp(player.v, 0, 4.2);
+
+    const turnPower = 120 * (player.v/2.2) * dt;
+    if (steerLeft) player.x -= turnPower;
+    if (steerRight) player.x += turnPower;
+    player.x = clamp(player.x, ROAD_LEFT + player.width/2, ROAD_RIGHT - player.width/2);
+
+    player.y += player.v * 60 * dt;
+    roadOffset += player.v * 160 * dt;
+
+    // manage cooldowns & timers
+    if (player.punchCooldown > 0) player.punchCooldown = Math.max(0, player.punchCooldown - dt);
+    if (player.kickCooldown > 0) player.kickCooldown = Math.max(0, player.kickCooldown - dt);
+    if (player.punchTimer > 0) player.punchTimer = Math.max(0, player.punchTimer - dt);
+    if (player.kickTimer > 0) player.kickTimer = Math.max(0, player.kickTimer - dt);
+
+    // PUNCH handling (quick)
+    if (punch && player.punchCooldown <= 0) {
+      player.punchCooldown = 0.6;     // cooldown seconds
+      player.punchTimer = 0.12;       // animation/active window
+      console.log('PUNCH triggered');
+      enemies.forEach(e => {
+        if (!e.crashed && e.hp>0 && Math.abs(e.y - player.y) < 60 && Math.abs(e.x - player.x) < 48) {
+          e.v *= 0.6;
+          e.hp -= 18;
+          e.x += (e.x < player.x) ? -8 : 8;
+          console.log('PUNCH hit', e.id, 'hp->', e.hp.toFixed(1));
+        }
+      });
+    }
+
+    // KICK handling (stronger)
+    if (kick && player.kickCooldown <= 0) {
+      player.kickCooldown = 1.2;      // longer cooldown
+      player.kickTimer = 0.18;        // active window
+      console.log('KICK triggered');
+      enemies.forEach(e => {
+        if (!e.crashed && e.hp>0 && Math.abs(e.y - player.y) < 70 && Math.abs(e.x - player.x) < 80) {
+          // stronger effect: more damage + stun
+          e.hp -= 28;
+          e.v *= 0.45;
+          e.x += (e.x < player.x) ? -18 : 18;
+          e.stun = Math.max(e.stun, 0.6);
+          console.log('KICK hit', e.id, 'hp->', e.hp.toFixed(1), 'stun->', e.stun);
+        }
+      });
+    }
+
+    // Update enemies AI & physics
+    enemies.forEach((e) => {
+      if (e.hp <= 0 || e.crashed) return;
+      if (e.stun > 0) { e.stun = Math.max(0, e.stun - dt); e.v *= 0.995; } // stunned: slow regain
+      else {
+        e.v = clamp(e.v + (Math.random()*0.2-0.1) * dt, 0.9, 3.3);
+        const desiredX = player.x + (Math.random()*2-1) * 80;
+        e.x += clamp((desiredX - e.x) * dt * 0.8, -60*dt, 60*dt);
+        if (e.y < player.y - 30) e.v += 0.2*dt;
+        // occasional attempt to attack player
+        if (Math.abs(e.y - player.y) < 60 && Math.abs(e.x - player.x) < 60 && Math.random() < 0.01) {
+          player.hp -= 6 + Math.random()*6;
+          player.v *= 0.95;
+          console.log('Enemy hit player', e.id, 'player.hp->', player.hp.toFixed(1));
+        }
+      }
+      // collision avoidance
+      enemies.forEach((o) => {
+        if (o===e || o.hp<=0) return;
+        if (Math.abs(o.y - e.y) < 40 && Math.abs(o.x - e.x) < 36) {
+          e.x += (e.x < o.x ? -1 : 1) * 20 * dt;
+          e.v *= 0.98;
+        }
+      });
+      e.y += e.v * 60 * dt;
+      if (e.x < ROAD_LEFT - 40 || e.x > ROAD_RIGHT + 40) {
+        e.crashed = true;
+        e.v = 0;
+        console.log('Enemy crashed off road', e.id);
+      }
+    });
+
+    // collisions between player and enemies
+    enemies.forEach(e => {
+      if (e.crashed || e.hp<=0) return;
+      if (Math.abs(e.y - player.y) < 30 && Math.abs(e.x - player.x) < (player.width)) {
+        if (e.y > player.y) {
+          player.v *= 0.75;
+          player.hp -= 6;
+          e.hp -= 2;
+        } else {
+          e.v *= 0.6;
+          e.hp -= 8;
+          player.hp -= 3;
+        }
+      }
+    });
+
+    // laps
+    const lapDistance = 3000;
+    if (player.y >= (player.lap+1) * lapDistance) {
+      player.lap++;
+      player.score += 300;
+      if (player.lap >= totalLaps) {
+        finishOrder.push({id: player.id, when: elapsed});
+        centerMsg.style.display = 'block';
+        centerMsg.textContent = 'You finished! Time: ' + formatTime(elapsed);
+        paused = true;
+      }
+    }
+    enemies.forEach(e => {
+      if (e.lap < totalLaps && e.y >= (e.lap+1) * lapDistance) {
+        e.lap++;
+        if (e.lap >= totalLaps && !finishOrder.find(x=>x.id===e.id)) finishOrder.push({id:e.id, when: elapsed});
+      }
+    });
+
+    // degrade HP if high speed
+    if (player.v > 3.8) { player.hp -= 6 * dt; }
+    player.hp = clamp(player.hp, 0, 100);
+   /* if (player.hp <= 0) {
+      player.crashed = true;
+      centerMsg.style.display = 'block';
+      centerMsg.textContent = 'You crashed! Tap Restart';
+      paused = true;
+    } */
+
+    // draw and HUD
+    renderScene();
+    updateHUD();
+
+    if (!paused) requestAnimationFrame(loop);
+  }
+
+  // render the road and riders
+  function renderScene() {
+    const w = canvas.width/(window.devicePixelRatio||1), h = canvas.height/(window.devicePixelRatio||1);
+    ctx.fillStyle = '#071018'; ctx.fillRect(0,0,w,h);
+
+    const sideGrad = ctx.createLinearGradient(0,0,0,h); sideGrad.addColorStop(0,'#0b0f13'); sideGrad.addColorStop(1,'#071018');
+    ctx.fillStyle = sideGrad; ctx.fillRect(0,0,ROAD_LEFT,h); ctx.fillRect(ROAD_RIGHT,0,w-ROAD_RIGHT,h);
+
+    ctx.fillStyle = '#2b2f33'; roundRect(ctx, ROAD_LEFT, 0, TRACK_WIDTH, h, 6); ctx.fill();
+
+    ctx.strokeStyle = '#f5f5f5'; ctx.lineWidth = 4; ctx.setLineDash([40,30]);
+    ctx.lineDashOffset = - (roadOffset % 70); ctx.beginPath(); ctx.moveTo(CENTER_X, 0); ctx.lineTo(CENTER_X, h); ctx.stroke(); ctx.setLineDash([]);
+
+    for (let i=0;i<h;i+=80) {
+      ctx.fillStyle = '#444';
+      ctx.fillRect(ROAD_LEFT+6, i + ((roadOffset/2)%80), 6, 30);
+      ctx.fillRect(ROAD_RIGHT-12, i + ((roadOffset/2)%80), 6, 30);
+    }
+
+    const allRiders = enemies.concat([player]).slice().sort((a,b)=> a.y - b.y);
+    allRiders.forEach(r => {
+      const screenY = h - ((r.y - player.y) * 0.25 + h*0.35);
+      const screenX = r.x;
+      const scale = 1 + ( (h - screenY) / (h*2) );
+      drawRider(screenX, screenY, r, scale);
+    });
+
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '14px system-ui';
+    ctx.fillText('Score: ' + player.score, 12, 18);
+    ctx.fillText('Finishers: ' + finishOrder.length, 12, 36);
+	
+	drawSideObjects();
+  }
+
+  function drawRider(x, y, r, scale=1) {
+    const ctxW = r.width * scale; const ctxH = r.height * scale;
+    ctx.globalAlpha = 0.12; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x, y+6, ctxW*0.6, 8, 0, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(x, y);
+    const lean = (r === player ? ( (keys['left']||keys['a']||keys['arrowleft']) ? -0.3 : ((keys['right']||keys['d']||keys['arrowright']) ? 0.3 : 0)) : 0);
+    ctx.rotate(lean);
+    ctx.fillStyle = r.color; roundRect(ctx, -ctxW/2, -ctxH, ctxW, ctxH*0.7, 6); ctx.fill();
+    ctx.fillStyle = '#222'; ctx.beginPath(); ctx.ellipse(0, -ctxH - 4, ctxW*0.23, ctxW*0.18, 0, 0, Math.PI*2); ctx.fill();
+
+    // player's attack visuals
+    if (r.isPlayer) {
+      if (r.punchTimer > 0) {
+        ctx.fillStyle = 'rgba(255,230,120,0.95)';
+        ctx.fillRect(ctxW/2, -ctxH + 6, 28, 10);
+      }
+      if (r.kickTimer > 0) {
+        ctx.fillStyle = 'rgba(255,140,60,0.95)';
+        ctx.fillRect(ctxW/2, -ctxH + 2, 40, 14);
+      }
+    }
+
+    if (r.crashed) {
+      ctx.fillStyle = 'rgba(255,0,0,0.6)'; ctx.fillRect(-ctxW/2, -ctxH + 6, ctxW, ctxH*0.25);
+    }
+    if (!r.isPlayer) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(-ctxW/2, -ctxH - 18, ctxW, 6);
+      ctx.fillStyle = 'lime'; ctx.fillRect(-ctxW/2, -ctxH - 18, ctxW * (Math.max(0, r.hp/100)), 6);
+    }
+    ctx.restore();
+  }
+  
+  
+//====================================================================================================================================================================
+
+
+
+
+  // helpers
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x+r, y); ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r); ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r); ctx.closePath();
+  }
+  function randomColor(){ const h = Math.floor(Math.random()*360); return 'hsl('+h+',70%,55%)'; }
+  function formatTime(s){ const mm = Math.floor(s/60); const ss = Math.floor(s%60); return mm + ':' + (ss<10? '0'+ss : ss); }
+
+  // start
+  initGame();
+
+  // debug helper
+  window.__roadrash = { getState: ()=>({player, enemies, elapsed}), initGame };
+
+})();
+</script>
+</body>
+</html>
