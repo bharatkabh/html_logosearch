@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fighter Game</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+        background: #222;
+        color: #fff;
+    }
+    #scoreboard {
+        position: fixed;
+        top: 10px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
+        border-radius: 8px;
+        text-align: right;
+    }
+    #controls {
+        position: fixed;
+        top: 10px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
+        border-radius: 8px;
+    }
+    canvas {
+        display: block;
+    }
+</style>
+</head>
+<body>
+<div id="controls">
+    <label for="fighterCount">Fighters:</label>
+    <input type="range" id="fighterCount" min="2" max="20" value="6">
+    <span id="fighterCountVal">6</span>
+    <button id="startBtn">Start Game</button>
+</div>
+<div id="scoreboard">
+    <div>Time Left: <span id="timeLeft">60</span>s</div>
+    <div>Total Fights: <span id="totalFights">0</span></div>
+    <div>Stopped Fights: <span id="stoppedFights">0</span></div>
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let fighters = [];
+let totalFights = 0;
+let stoppedFights = 0;
+let gameTime = 60;
+let gameInterval;
+let fightPairs = [];
+let img = new Image();
+img.src = './png/fightersticker.png';
+
+const fighterCountSlider = document.getElementById('fighterCount');
+const fighterCountVal = document.getElementById('fighterCountVal');
+fighterCountSlider.addEventListener('input', () => {
+    fighterCountVal.textContent = fighterCountSlider.value;
+});
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+
+class Fighter {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.size = 200;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.fighting = false;
+        this.fightPartner = null;
+        this.fightStartTime = null;
+        this.rotation = 0; // rotation angle in radians
+        this.rotating = false;
+		this.flip=false;
+    }
+
+    draw() {
+	
+	
+        ctx.save();
+        ctx.translate(this.x + this.size / 2, this.y + this.size / 2);
+        ctx.rotate(this.rotation);
+		if(this.flip){
+		 ctx.scale(-1, 1);
+		}
+        ctx.drawImage(img, -this.size / 2, -this.size / 2, this.size, this.size);
+        ctx.restore();
+    }
+
+    update() {
+        if (!this.fighting) {
+            this.x += this.vx;
+            this.y += this.vy;
+
+            if (this.vx > 5) this.vx = 2;
+            if (this.vy > 5) this.vy = 2;
+            if (this.vx < -5) this.vx = -2;
+            if (this.vy < -5) this.vy = -2;
+
+            if (this.x <= 0 || this.x + this.size >= canvas.width) this.vx *= -1;
+            if (this.y <= 0 || this.y + this.size >= canvas.height) this.vy *= -1;
+        } else {
+            // Bounce around while fighting
+            this.x += this.vx * 0.5;
+            this.y += this.vy * 0.5;
+
+            if (this.vx > 10) this.vx = 5;
+            if (this.vy > 10) this.vy = 5;
+            if (this.vx < -10) this.vx = -5;
+            if (this.vy < -10) this.vy = -5;
+
+            if (this.x <= 0 || this.x + this.size >= canvas.width) this.vx *= -1;
+            if (this.y <= 0 || this.y + this.size >= canvas.height) this.vy *= -1;
+        }
+    }
+
+    startFight(partner) {
+        //this.fighting = true;
+        this.fightPartner = partner;
+        this.fightStartTime = Date.now();
+		setFlip(this,partner)
+		
+    }
+
+    stopFight() {
+        this.fighting = false;
+        this.fightPartner = null;
+        this.fightStartTime = null;
+    }
+
+    isClicked(mx, my) {
+        return mx >= this.x && mx <= this.x + this.size && my >= this.y && my <= this.y + this.size;
+    }
+
+    startRotation() {
+        if (this.rotating) return;
+        this.rotating = true;
+        const startTime = Date.now();
+        const animateRotation = () => {
+            const elapsed = Date.now() - startTime;
+            if (elapsed < 1000) {
+                this.rotation = (elapsed / 1000) * 2 * Math.PI; // full spin in 1 sec
+                requestAnimationFrame(animateRotation);
+            } else {
+                this.rotation = 0; // reset to default
+                this.rotating = false;
+            }
+        };
+        animateRotation();
+    }
+}
+
+function startGame() {
+    fighters = [];
+    totalFights = 0;
+    stoppedFights = 0;
+    document.getElementById('totalFights').textContent = totalFights;
+    document.getElementById('stoppedFights').textContent = stoppedFights;
+    gameTime = 60;
+    document.getElementById('timeLeft').textContent = gameTime;
+
+    const count = parseInt(fighterCountSlider.value);
+    for (let i = 0; i < count; i++) {
+        fighters.push(new Fighter(Math.random() * (canvas.width - 60), Math.random() * (canvas.height - 60)));
+    }
+
+    clearInterval(gameInterval);
+    gameInterval = setInterval(() => {
+        gameTime--;
+        document.getElementById('timeLeft').textContent = gameTime;
+        if (gameTime <= 0) {
+            clearInterval(gameInterval);
+            alert(`Game Over!\nTotal Fights: ${totalFights}\nStopped Fights: ${stoppedFights}`);
+        }
+    }, 1000);
+
+    animate();
+}
+
+
+
+function setFlip( fighter1, fighter2) {
+
+if (!fighter1.fighting && !fighter2.fighting) {
+    fighter1.fighting = true;
+    fighter2.fighting = true;
+
+    // Randomly flip one of them
+    if (Math.random() > 0.5) {
+        fighter1.flip = true;
+        fighter2.flip = false;
+    } else {
+        fighter1.flip = false;
+        fighter2.flip = true;
+    }
+
+    setTimeout(() => {
+        fighter1.fighting = false;
+        fighter2.fighting = false;
+        fighter1.flip = false;
+        fighter2.flip = false;
+    }, 3000); // Fight lasts 3 seconds
+}
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    fighters.forEach(f => f.update());
+    fighters.forEach(f => f.draw());
+    handleFights();
+    if (gameTime > 0) {
+        requestAnimationFrame(animate);
+    }
+}
+
+function handleFights() {
+    // Randomly start fights
+    if (Math.random() < 0.02 && fightPairs.length < fighters.length / 2) {
+        let f1 = fighters[Math.floor(Math.random() * fighters.length)];
+        let f2 = fighters[Math.floor(Math.random() * fighters.length)];
+        if (f1 !== f2 && !f1.fighting && !f2.fighting) {
+            f1.startFight(f2);
+            f2.startFight(f1);
+            fightPairs.push([f1, f2]);
+            totalFights++;
+            document.getElementById('totalFights').textContent = totalFights;
+        }
+    }
+
+    // Check fight duration and bounce effect
+    fightPairs.forEach((pair, index) => {
+        let [f1, f2] = pair;
+        let dx = f2.x - f1.x;
+        let dy = f2.y - f1.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 30) {
+            f1.vx += dx / 200;
+            f1.vy += dy / 200;
+            f2.vx -= dx / 200;
+            f2.vy -= dy / 200;
+        }
+
+        if (Date.now() - f1.fightStartTime > 3000) {
+            f1.stopFight();
+            f2.stopFight();
+            fightPairs.splice(index, 1);
+        }
+    });
+}
+
+canvas.addEventListener('click', (e) => {
+    const mx = e.clientX;
+    const my = e.clientY;
+    fightPairs.forEach((pair, index) => {
+        if (pair[0].isClicked(mx, my) || pair[1].isClicked(mx, my)) {
+            stoppedFights++;
+            document.getElementById('stoppedFights').textContent = stoppedFights;
+
+            // Rotate clicked fighter for 1 second
+            if (pair[0].isClicked(mx, my)) {
+                pair[0].startRotation();
+            } else {
+                pair[1].startRotation();
+            }
+
+            pair[0].stopFight();
+            pair[1].stopFight();
+            fightPairs.splice(index, 1);
+        }
+    });
+});
+</script>
+</body>
+</html>
