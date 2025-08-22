@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Background Remover</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        background: #f4f4f4;
+    }
+    canvas {
+        border: 2px solid #ccc;
+        cursor: crosshair;
+        margin-top: 20px;
+    }
+    #controls {
+        margin: 10px;
+    }
+    .highlight {
+        outline: 2px dashed #ff4081;
+    }
+</style>
+</head>
+<body>
+
+<h2>Magic Wand Background Remover</h2>
+<input type="file" id="upload" accept="image/*">
+<div id="controls">
+    <label>Tolerance: <input type="range" id="tolerance" min="0" max="100" value="30"></label>
+    <button id="removeBtn">Remove Background</button>
+    <button id="undoBtn">Undo</button>
+    <button id="downloadBtn">Download Image</button>
+</div>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const upload = document.getElementById('upload');
+const toleranceSlider = document.getElementById('tolerance');
+
+let img = new Image();
+let selections = []; // Array of mask data for multiple selections
+let imageData, width, height;
+
+upload.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+        img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    width = img.width;
+    height = img.height;
+};
+
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(e.clientX - rect.left);
+    const y = Math.floor(e.clientY - rect.top);
+
+    const tolerance = parseInt(toleranceSlider.value);
+    const mask = floodFill(x, y, tolerance);
+    selections.push(mask);
+    drawHighlight();
+});
+
+function floodFill(x, y, tolerance) {
+    const stack = [[x, y]];
+    const visited = new Uint8Array(width * height);
+    const mask = new Uint8Array(width * height);
+    const index = (y * width + x) * 4;
+    const baseColor = imageData.data.slice(index, index + 3);
+
+    while (stack.length) {
+        const [cx, cy] = stack.pop();
+        if (cx < 0 || cy < 0 || cx >= width || cy >= height) continue;
+        const idx = cy * width + cx;
+        if (visited[idx]) continue;
+        visited[idx] = 1;
+
+        const pixelIndex = idx * 4;
+        const r = imageData.data[pixelIndex];
+        const g = imageData.data[pixelIndex + 1];
+        const b = imageData.data[pixelIndex + 2];
+
+        if (colorDistance(baseColor, [r, g, b]) <= tolerance) {
+            mask[idx] = 1;
+            stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+        }
+    }
+    return mask;
+}
+
+function colorDistance(c1, c2) {
+    return Math.sqrt(
+        (c1[0] - c2[0]) ** 2 +
+        (c1[1] - c2[1]) ** 2 +
+        (c1[2] - c2[2]) ** 2
+    );
+}
+
+function drawHighlight() {
+    ctx.putImageData(imageData, 0, 0);
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    selections.forEach(mask => {
+        for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+                const px = (i % width);
+                const py = Math.floor(i / width);
+                ctx.fillRect(px, py, 1, 1);
+            }
+        }
+    });
+}
+
+document.getElementById('removeBtn').addEventListener('click', () => {
+    const newImageData = ctx.createImageData(width, height);
+    newImageData.data.set(imageData.data);
+    selections.forEach(mask => {
+        for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+                const idx = i * 4;
+                newImageData.data[idx + 3] = 0; // make transparent
+            }
+        }
+    });
+    ctx.putImageData(newImageData, 0, 0);
+});
+
+document.getElementById('undoBtn').addEventListener('click', () => {
+    selections.pop();
+    drawHighlight();
+});
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'edited.png';
+    link.href = canvas.toDataURL();
+    link.click();
+});
+</script>
+
+</body>
+</html>

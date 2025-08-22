@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Eraser Tool</title>
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #222;
+    color: white;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+  }
+  #canvas {
+    border: 2px solid white;
+    cursor: none;
+    background: #444;
+  }
+  #controls {
+    margin-top: 15px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+  }
+   .highlight {
+        outline: 2px dashed #ff4081;
+    }
+  button {
+    padding: 8px 14px;
+    background: #444;
+    color: white;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  button:hover {
+    background: #666;
+  }
+  #eraserSizeDisplay {
+    font-size: 18px;
+    color: #fff;
+  }
+  .cursor {
+    position: absolute;
+    border: 2px solid white;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+  }
+</style>
+</head>
+<body>
+<h1>Advanced Image Eraser</h1>
+<canvas id="canvas"></canvas>
+<div id="controls">
+  <input type="file" id="upload" accept="image/*">
+  <label>Tolerance: <input type="range" id="tolerance" min="0" max="100" value="30"></label>
+    <button id="removeBtn">Remove Background</button>
+  <span id="eraserSizeDisplay">Eraser Size: 20px</span>
+  <button id="undoBtn">Undo</button>
+  <button id="redoBtn">Redo</button>
+  <button id="downloadBtn">Download</button>
+  <button onclick="setTool('wand')">Magic Wand</button>
+<button onclick="setTool('eraser')">Eraser</button>
+  <!-- <button onclick="currentTool='wand'">Magic Wand</button>
+<button onclick="currentTool='eraser'">Eraser</button> -->
+</div>
+<div class="cursor" id="cursor"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const upload = document.getElementById('upload');
+const eraserSizeDisplay = document.getElementById('eraserSizeDisplay');
+const cursor = document.getElementById('cursor');
+const toleranceSlider = document.getElementById('tolerance'); // newly added
+
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+
+let currentTool = "wand";
+
+
+let img = new Image();
+let erasing = false;
+let eraserSize = 20;
+
+let undoStack = [];
+let redoStack = [];
+
+//newly added constants
+let selections = []; // Array of mask data for multiple selections
+let imageData, width, height;
+
+
+let wandStack = [];
+let eraserStack = [];
+
+
+
+canvas.addEventListener("mousedown", handleMouseDown);
+canvas.addEventListener("mousemove", handleMouseMove);
+canvas.addEventListener("mouseup", handleMouseUp);
+canvas.addEventListener("mouseleave", handleMouseLeave);
+canvas.addEventListener("click", handleClick);
+
+
+
+
+function setTool(tool) {
+  currentTool = tool;
+  updateCursor();
+} 
+
+
+/*
+function setTool(tool) {
+  if (tool !== currentTool) {
+    // Save current state before switching
+    if (currentTool === 'wand') {
+      wandStack.push(canvas.toDataURL());
+    } else if (currentTool === 'eraser') {
+      eraserStack.push(canvas.toDataURL());
+    }
+
+    // Switch tool
+    currentTool = tool;
+    updateCursor();
+
+    // Restore previous state for this tool if available
+    let restoreState = null;
+    if (currentTool === 'wand' && wandStack.length > 0) {
+      restoreState = wandStack[wandStack.length - 1];
+    } else if (currentTool === 'eraser' && eraserStack.length > 0) {
+      restoreState = eraserStack[eraserStack.length - 1];
+    }
+
+    if (restoreState) {
+      let imgRestore = new Image();
+      imgRestore.src = restoreState;
+      imgRestore.onload = () => ctx.drawImage(imgRestore, 0, 0);
+    }
+  }
+}
+
+*/
+
+
+
+function updateCursor() {
+  if (currentTool === 'wand') {
+    // Hide the cursor (we can draw custom wand inside canvas)
+     canvas.style.cursor = 'crosshair';
+    // OR show wand icon using CSS:
+    // canvas.style.cursor = "url('wand.png') 4 4, auto";
+  } else if (currentTool === 'eraser') {
+    // Show crosshair for precision
+   
+	canvas.style.cursor = 'none'; 
+  } else {
+    // Default cursor for other tools
+    canvas.style.cursor = 'default';
+  }
+}
+
+
+function handleMouseDown(e) {
+    if (currentTool === "wand") {
+        //selectAreaWithWand(e);
+    } else if (currentTool === "eraser") {
+        startErasing(e);
+    }
+}
+
+function handleMouseMove(e) {
+    if (currentTool === "eraser") {
+        continueErasing(e);
+    } 
+}
+
+function handleMouseUp(e) {
+    if (currentTool === "eraser") {
+        stopErasing(e);
+    } 
+}
+
+function handleMouseLeave(e) {
+    if (currentTool === "eraser") {
+        stopErasing(e);
+    } 
+}
+
+
+function handleClick(e) {
+    if (currentTool === "wand") {
+        wandfun(e);
+    } 
+}
+
+
+
+
+
+
+
+
+
+
+
+// Save state for undo
+function saveState() {
+    undoStack.push(canvas.toDataURL());
+    if (undoStack.length > 50) undoStack.shift(); // Limit history
+    redoStack = []; // Clear redo on new action
+}
+
+// Undo function
+function undo() {
+    if (undoStack.length > 0) {
+        redoStack.push(canvas.toDataURL());
+        const lastState = undoStack.pop();
+        let imgRestore = new Image();
+        imgRestore.src = lastState;
+        imgRestore.onload = () => ctx.drawImage(imgRestore, 0, 0);
+    }
+}
+
+// Redo function
+function redo() {
+    if (redoStack.length > 0) {
+        undoStack.push(canvas.toDataURL());
+        const nextState = redoStack.pop();
+        let imgRestore = new Image();
+        imgRestore.src = nextState;
+        imgRestore.onload = () => ctx.drawImage(imgRestore, 0, 0);
+    }
+}
+
+// Load uploaded image
+upload.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+			 imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            undoStack = [];
+            redoStack = [];
+			 width = img.width;//changed for bgremover
+             height = img.height;
+            saveState();
+        };
+        img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+// Mouse events for eraser
+function startErasing(e){
+//canvas.addEventListener('mousedown', e => {
+    erasing = true;
+    saveState();
+//});
+}
+
+function stopErasing(e){
+//canvas.addEventListener('mousedown', e => {
+    erasing = false;
+    //saveState();
+//});
+}
+
+
+//canvas.addEventListener('mouseup', () => erasing = false);
+//canvas.addEventListener('mouseleave', () => erasing = false);
+function continueErasing(e){
+
+//canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Move custom cursor
+    cursor.style.left = `${e.pageX - eraserSize / 2}px`;
+    cursor.style.top = `${e.pageY - eraserSize / 2}px`;
+    cursor.style.width = `${eraserSize}px`;
+    cursor.style.height = `${eraserSize}px`;
+
+    if (erasing) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(x, y, eraserSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+//});
+}
+
+// Adjust eraser size with keys
+document.addEventListener('keydown', e => {
+    if (e.key === 's') {
+        eraserSize += 5;
+    } else if (e.key === 'a') {
+        eraserSize = Math.max(5, eraserSize - 5);
+    } else if (e.ctrlKey && e.key === 'z') {
+        undo();
+    } else if (e.ctrlKey && e.key === 'y') {
+        redo();
+    }
+    eraserSizeDisplay.textContent = `Eraser Size: ${eraserSize}px`;
+});
+
+// Buttons for undo/redo
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+
+//background remover added from another file start
+
+function floodFill(x, y, tolerance) {
+    const stack = [[x, y]];
+    const visited = new Uint8Array(width * height);
+    const mask = new Uint8Array(width * height);
+    const index = (y * width + x) * 4;
+    const baseColor = imageData.data.slice(index, index + 3);
+
+    while (stack.length) {
+        const [cx, cy] = stack.pop();
+        if (cx < 0 || cy < 0 || cx >= width || cy >= height) continue;
+        const idx = cy * width + cx;
+        if (visited[idx]) continue;
+        visited[idx] = 1;
+
+        const pixelIndex = idx * 4;
+        const r = imageData.data[pixelIndex];
+        const g = imageData.data[pixelIndex + 1];
+        const b = imageData.data[pixelIndex + 2];
+
+        if (colorDistance(baseColor, [r, g, b]) <= tolerance) {
+            mask[idx] = 1;
+            stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+        }
+    }
+    return mask;
+}
+
+function colorDistance(c1, c2) {
+    return Math.sqrt(
+        (c1[0] - c2[0]) ** 2 +
+        (c1[1] - c2[1]) ** 2 +
+        (c1[2] - c2[2]) ** 2
+    );
+}
+
+function drawHighlight() {
+    ctx.putImageData(imageData, 0, 0);
+    ctx.fillStyle = 'rgba(255,0,0,0.3)';
+    selections.forEach(mask => {
+        for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+                const px = (i % width);
+                const py = Math.floor(i / width);
+                ctx.fillRect(px, py, 1, 1);
+            }
+        }
+    });
+}
+
+/*
+document.getElementById('removeBtn').addEventListener('click', () => {
+    const newImageData = ctx.createImageData(width, height);
+    newImageData.data.set(imageData.data);
+    selections.forEach(mask => {
+        for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+                const idx = i * 4;
+                newImageData.data[idx + 3] = 0; // make transparent
+            }
+        }
+    });
+    ctx.putImageData(newImageData, 0, 0);
+});  */
+
+
+document.getElementById('removeBtn').addEventListener('click', () => {
+    const currentImageData = ctx.getImageData(0, 0, width, height);
+    selections.forEach(mask => {
+        for (let i = 0; i < mask.length; i++) {
+            if (mask[i]) {
+                const idx = i * 4;
+                currentImageData.data[idx + 3] = 0; // make transparent
+            }
+        }
+    });
+    ctx.putImageData(currentImageData, 0, 0);
+});
+
+
+
+// event listener conflict need to be resolved
+function wandfun(e){
+//canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(e.clientX - rect.left);
+    const y = Math.floor(e.clientY - rect.top);
+
+    const tolerance = parseInt(toleranceSlider.value);
+    const mask = floodFill(x, y, tolerance);
+    selections.push(mask);
+    drawHighlight();
+//});
+}
+
+//background remover added from another file end
+
+// Download button
+downloadBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'edited-image.png';
+    link.href = canvas.toDataURL();
+    link.click();
+});
+</script>
+</body>
+</html>
