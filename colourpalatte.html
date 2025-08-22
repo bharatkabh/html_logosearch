@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Color Theory Palettes — Modern & Playful</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#151922;
+    --muted:#9aa4b2;
+    --text:#e9edf1;
+    --brand:#7c9cff;
+    --accent:#72e6b9;
+    --card:#1b2130;
+    --ring:#2a3245;
+    --shadow: 0 10px 30px rgba(0,0,0,.45);
+    --radius:16px;
+    --gap:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+  header{
+    position:sticky; top:0; z-index:10;
+    backdrop-filter:saturate(140%) blur(10px);
+    background:linear-gradient(180deg, #0f1115ee, #0f111500);
+    padding:22px clamp(16px,4vw,32px) 12px;
+    border-bottom:1px solid #20283a;
+  }
+  .row{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .title{
+    font-size: clamp(18px, 2.2vw, 26px);
+    font-weight:700; letter-spacing:.2px;
+  }
+  .muted{color:var(--muted)}
+  .spacer{flex:1}
+  .btn{
+    appearance:none; border:1px solid #2a3245; color:var(--text);
+    background:linear-gradient(180deg,#1e2535,#172030);
+    padding:10px 14px; border-radius:12px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:8px;
+    box-shadow: var(--shadow);
+    transition:.2s transform ease, .2s background ease, .2s border-color ease;
+  }
+  .btn:hover{ transform: translateY(-1px); border-color:#3a4560 }
+  .btn.primary{
+    background: linear-gradient(180deg, #7c9cff, #5877ff);
+    border-color:#4968ff; color:#fff;
+  }
+  .toolbar{
+    margin: 12px clamp(16px,4vw,32px) 0;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+
+  .grid{
+    padding: 10px clamp(16px,4vw,32px) 40px;
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 16px;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--ring);
+    border-radius: var(--radius);
+    padding:14px;
+    box-shadow: var(--shadow);
+    transition:.2s border-color ease, .2s transform ease;
+    cursor:pointer;
+  }
+  .card:hover{ border-color:#3a4560; transform:translateY(-2px) }
+  .card-top{
+    display:flex; align-items:center; gap:10px; margin-bottom:10px;
+  }
+  .rule{
+    font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid #2a3245; color:var(--muted);
+  }
+
+  /* Swatch strip: exactly 4mm x 4mm per color */
+  .swatches{
+    display:flex; gap:6px; align-items:center;
+  }
+  .swatch{
+    width:4mm; height:4mm; border-radius:6px; border:1px solid #00000030;
+  }
+
+  .card-meta{
+    display:flex; justify-content:space-between; align-items:center;
+    color:var(--muted); font-size:12px; margin-top:8px;
+  }
+
+  dialog{
+    border:none; padding:0; border-radius:20px; overflow:hidden;
+    background:var(--panel); color:var(--text);
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+    width:min(900px, 92vw);
+  }
+  dialog::backdrop{ background: rgba(0,0,0,.5) }
+
+  .modal-head{
+    padding:18px 20px; border-bottom:1px solid #26304a;
+    display:flex; align-items:center; gap:10px;
+    background:linear-gradient(180deg, #182034, #131a29);
+  }
+  .modal-title{ font-size:16px; font-weight:700 }
+  .modal-body{ padding:20px; }
+  .modal-actions{
+    display:flex; gap:10px; padding:16px 20px; border-top:1px solid #26304a; background:#121826;
+    justify-content:flex-end;
+  }
+
+  .preview{
+    display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin:8px 0 14px;
+  }
+  .big-swatch{
+    height:28mm; border-radius:18px; border:1px solid #00000030;
+    display:flex; align-items:flex-end; justify-content:center; padding:10px;
+    position:relative; overflow:hidden;
+  }
+  .hex{
+    background: rgba(0,0,0,.55); color:#fff; font-size:12px; padding:6px 10px; border-radius:999px;
+    backdrop-filter: blur(2px);
+  }
+  .copy-btn{
+    position:absolute; top:8px; right:8px; font-size:11px; padding:4px 8px;
+    background:#0f1523; color:#cfe2ff; border:1px solid #2b395a; border-radius:999px; cursor:pointer;
+  }
+
+  .form{
+    display:grid; gap:14px; grid-template-columns: 1fr 1fr 1fr; align-items:end;
+  }
+  .preview-swatch {
+        width: 10mm;
+        height: 10mm;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        margin: 10px auto;
+    }
+  .field{ display:flex; flex-direction:column; gap:6px }
+  label{ color:var(--muted); font-size:12px }
+  select, input[type="color"]{
+    appearance:none; width:100%;
+    background:#131a29; color:var(--text);
+    border:1px solid #2a3245; border-radius:12px;
+    padding:10px 12px;
+  }
+  .note{ color:var(--muted); font-size:12px }
+
+  .empty{
+    text-align:center; padding:40px; color:var(--muted);
+    border:1px dashed #2a3245; border-radius:16px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <div class="title">Color Theory Palettes</div>
+    <div class="spacer"></div>
+    <button class="btn" id="aboutBtn">What’s this?</button>
+    <button class="btn primary" id="newBtn">New Palette</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="note">Each palette shows 4 colors (4 mm swatches). Click a card to open details.</div>
+</div>
+
+<main class="grid" id="grid"></main>
+
+<template id="cardTpl">
+  <div class="card">
+    <div class="card-top">
+      <div class="rule"></div>
+      <div class="spacer"></div>
+      <div class="swatches"></div>
+    </div>
+    <div class="card-meta">
+      <span class="muted name"></span>
+      <span class="count">4 colors</span>
+    </div>
+  </div>
+</template>
+
+<!-- View Palette Modal -->
+<dialog id="viewDialog" aria-label="View palette">
+  <div class="modal-head">
+    <div class="modal-title" id="viewTitle">Palette</div>
+    <div class="spacer"></div>
+    <button class="btn" id="closeView">Close</button>
+  </div>
+  <div class="modal-body">
+    <div class="preview" id="viewPreview"></div>
+    <div class="row">
+      <div class="note" id="viewDesc"></div>
+      <div class="spacer"></div>
+      <button class="btn" id="addToGallery">Duplicate to gallery</button>
+      <button class="btn" id="copyAll">Copy all HEX</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Create Palette Modal -->
+<dialog id="createDialog" aria-label="Create palette">
+  <div class="modal-head">
+    <div class="modal-title">Create New Palette</div>
+    <div class="spacer"></div>
+    <button class="btn" id="closeCreate">Close</button>
+  </div>
+  <div class="modal-body">
+  <div class="preview-swatch" id="previewSwatch"></div>
+    <div class="form">
+      <div class="field">
+        <label for="baseColor">Base Color</label>
+        <input type="color" id="baseColor" value="#7c9cff" onchange="updatePreview()" />
+      </div>
+      <div class="field">
+        <label for="ruleSel">Rule</label>
+        <select id="ruleSel">
+          <option value="complementary">Complementary</option>
+          <option value="analogous">Analogous</option>
+          <option value="triadic">Triadic</option>
+          <option value="monochrome">Monochromatic</option>
+          <option value="split">Split-Complementary</option>
+          <option value="modern">Modern Art (rule-breaker)</option>
+        </select>
+      </div>
+      <div class="field">
+        <button class="btn" id="genBtn">Generate</button>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <div class="note">Preview</div>
+      <div class="preview" id="createPreview"></div>
+    </div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn" id="saveBtn" disabled>Save to gallery</button>
+  </div>
+</dialog>
+
+<script>
+/* ---------- Utilities: color convert & helpers ---------- */
+function clamp(v, min, max){ return Math.min(max, Math.max(min, v)); }
+
+function hexToHsl(hex){
+  hex = hex.replace('#','');
+  if(hex.length===3){ hex = hex.split('').map(c=>c+c).join(''); }
+  const r = parseInt(hex.slice(0,2),16)/255;
+  const g = parseInt(hex.slice(2,4),16)/255;
+  const b = parseInt(hex.slice(4,6),16)/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if(max===min){ h = s = 0; }
+  else{
+    const d = max-min;
+    s = l>0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max){
+      case r: h = (g-b)/d + (g<b?6:0); break;
+      case g: h = (b-r)/d + 2; break;
+      case b: h = (r-g)/d + 4; break;
+    }
+    h = h*60;
+  }
+  return { h, s, l };
+}
+function hslToHex(h,s,l){
+  h = ((h%360)+360)%360;
+  function f(n){
+    const k = (n + h/30) % 12;
+    const a = s * Math.min(l,1-l);
+    const c = l - a * Math.max(-1, Math.min(k-3, Math.min(9-k,1)));
+    return Math.round(255*c);
+  }
+  return '#' + [f(0),f(8),f(4)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function rotateHue(h, delta){ return ((h + delta) % 360 + 360) % 360; }
+
+/* ---------- Generators for different rules ---------- */
+function genComplementary(base){
+  const {h,s,l} = hexToHsl(base);
+  return [
+    hslToHex(h, s, l),
+    hslToHex(rotateHue(h,180), s, l),
+    hslToHex(h, clamp(s*0.75,0,1), clamp(l*0.85,0,1)),
+    hslToHex(rotateHue(h,180), clamp(s*0.9,0,1), clamp(1-l*0.85,0,1)),
+  ];
+}
+function genAnalogous(base){
+  const {h,s,l} = hexToHsl(base);
+  return [
+    hslToHex(rotateHue(h,-30), s, l),
+    hslToHex(h, s, l),
+    hslToHex(rotateHue(h,30), s, l),
+    hslToHex(rotateHue(h,60), clamp(s*0.9,0,1), clamp(l*0.95,0,1)),
+  ];
+}
+function genTriadic(base){
+  const {h,s,l} = hexToHsl(base);
+  return [
+    hslToHex(h, s, l),
+    hslToHex(rotateHue(h,120), s, l),
+    hslToHex(rotateHue(h,240), s, l),
+    hslToHex(rotateHue(h,120), clamp(s*0.7,0,1), clamp(l*0.8,0,1)),
+  ];
+}
+function genMonochrome(base){
+  const {h,s,l} = hexToHsl(base);
+  return [
+    hslToHex(h, clamp(s*0.15,0,1), clamp(l*0.95,0,1)),
+    hslToHex(h, clamp(s*0.5,0,1), clamp(l*1.05,0,1)),
+    hslToHex(h, s, l),
+    hslToHex(h, clamp(s*1.1,0,1), clamp(l*0.8,0,1)),
+  ];
+}
+function genSplitComplementary(base){
+  const {h,s,l} = hexToHsl(base);
+  return [
+    hslToHex(h, s, l),
+    hslToHex(rotateHue(h,150), s, l),
+    hslToHex(rotateHue(h,-150), s, l),
+    hslToHex(rotateHue(h,150), clamp(s*0.8,0,1), clamp(l*0.8,0,1)),
+  ];
+}
+/* “Modern Art” rule-breaker: intentionally jarring, high-energy combos */
+function genModern(base){
+  const {h,s,l} = hexToHsl(base);
+  const set = [
+    '#ff004d', '#00e0ff', '#39ff14', '#ff00ff', // neon clash
+  ];
+  // Mix with a couple derived harsh contrasts from base:
+  const hard1 = hslToHex(rotateHue(h, 150), clamp(1,0,1), clamp(0.45,0,1));
+  const hard2 = hslToHex(rotateHue(h, 15), clamp(1,0,1), clamp(0.55,0,1));
+  // Choose 2 from preset + 2 from derived, randomized:
+  const pick = [...set]
+    .sort(()=>Math.random()-0.5)
+    .slice(0,2)
+    .concat([hard1, hard2])
+    .slice(0,4);
+  return pick;
+}
+
+const RULES = {
+  complementary: {name:'Complementary', fn: genComplementary, desc:'Opposite hues on the color wheel for strong contrast and balance.'},
+  analogous:     {name:'Analogous', fn: genAnalogous, desc:'Neighboring hues for a harmonious, gentle blend.'},
+  triadic:       {name:'Triadic', fn: genTriadic, desc:'Three evenly spaced hues — lively yet balanced.'},
+  monochrome:    {name:'Monochromatic', fn: genMonochrome, desc:'Single hue with varied tints/shades for cohesion.'},
+  split:         {name:'Split-Complementary', fn: genSplitComplementary, desc:'Base plus the two neighbors of its complement.'},
+  modern:        {name:'Modern Art (rule-breaker)', fn: genModern, desc:'Deliberate tension: neon clashes, uneven saturation/lightness.'},
+};
+
+/* ---------- State ---------- */
+const grid = document.getElementById('grid');
+const cardTpl = document.getElementById('cardTpl');
+
+let gallery = [];
+
+/* ---------- Seed palettes (classic + rule-breakers) ---------- */
+function seed(){
+  const seeds = [
+    { name:'Sunset Complementary', rule:'complementary', base:'#ff7a59' },
+    { name:'Forest Analogous',     rule:'analogous',     base:'#2dbf7a' },
+    { name:'Digital Triad',        rule:'triadic',       base:'#4b66ff' },
+    { name:'Slate Monochrome',     rule:'monochrome',    base:'#8892a6' },
+    { name:'Citrus Split',         rule:'split',         base:'#ffb703' },
+    // Rule-breakers:
+    { name:'Neon Clash I',         rule:'modern',        base:'#e100ff' },
+    { name:'Pop Art Clash II',     rule:'modern',        base:'#00ffd5' },
+  ];
+  gallery = seeds.map(s => ({
+    name: s.name,
+    rule: s.rule,
+    base: s.base,
+    colors: RULES[s.rule].fn(s.base),
+  }));
+}
+
+/* ---------- Render cards ---------- */
+function render(){
+  grid.innerHTML = '';
+  if (!gallery.length){
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No palettes yet. Create one with the “New Palette” button!';
+    grid.appendChild(empty);
+    return;
+  }
+  for(const p of gallery){
+    const node = cardTpl.content.firstElementChild.cloneNode(true);
+    node.querySelector('.rule').textContent = RULES[p.rule].name;
+    node.querySelector('.name').textContent = p.name || '(Untitled)';
+    const bar = node.querySelector('.swatches');
+    for(const c of p.colors){
+      const s = document.createElement('div');
+      s.className = 'swatch';
+      s.style.background = c;
+      bar.appendChild(s);
+    }
+    node.addEventListener('click', ()=> openView(p));
+    grid.appendChild(node);
+  }
+}
+
+/* ---------- View modal ---------- */
+const viewDialog = document.getElementById('viewDialog');
+const viewPreview = document.getElementById('viewPreview');
+const viewTitle = document.getElementById('viewTitle');
+const viewDesc = document.getElementById('viewDesc');
+const addToGalleryBtn = document.getElementById('addToGallery');
+const copyAllBtn = document.getElementById('copyAll');
+document.getElementById('closeView').onclick = ()=> viewDialog.close();
+
+let currentViewed = null;
+
+function openView(p){
+  currentViewed = p;
+  viewTitle.textContent = `${p.name || 'Palette'} — ${RULES[p.rule].name}`;
+  viewDesc.textContent = RULES[p.rule].desc;
+  viewPreview.innerHTML = '';
+  p.colors.forEach(hex=>{
+    const cell = document.createElement('div');
+    cell.className = 'big-swatch';
+    cell.style.background = hex;
+    const copy = document.createElement('button');
+    copy.className = 'copy-btn';
+    copy.textContent = 'Copy';
+    copy.addEventListener('click', (ev)=>{ ev.stopPropagation(); navigator.clipboard.writeText(hex); copy.textContent='Copied!'; setTimeout(()=>copy.textContent='Copy',900); });
+    const label = document.createElement('div');
+    label.className = 'hex';
+    label.textContent = hex.toUpperCase();
+    cell.appendChild(copy);
+    cell.appendChild(label);
+    viewPreview.appendChild(cell);
+  });
+  addToGalleryBtn.onclick = ()=>{
+    gallery.unshift({
+      name: (p.name ? p.name+' (copy)' : 'Untitled (copy)'),
+      rule: p.rule, base: p.base, colors: [...p.colors]
+    });
+    render();
+  };
+  copyAllBtn.onclick = ()=>{
+    navigator.clipboard.writeText(p.colors.join(', '));
+    copyAllBtn.textContent='Copied!';
+    setTimeout(()=>copyAllBtn.textContent='Copy all HEX',900);
+  };
+  viewDialog.showModal();
+}
+
+/* ---------- Create modal ---------- */
+const createDialog = document.getElementById('createDialog');
+const closeCreate = document.getElementById('closeCreate');
+const newBtn = document.getElementById('newBtn');
+const genBtn = document.getElementById('genBtn');
+const saveBtn = document.getElementById('saveBtn');
+const baseColorInput = document.getElementById('baseColor');
+const ruleSel = document.getElementById('ruleSel');
+const createPreview = document.getElementById('createPreview');
+const baseColorPicker = document.getElementById('baseColor');
+let draft = null;
+
+newBtn.onclick = ()=>{ draft = null; createPreview.innerHTML=''; saveBtn.disabled = true; createDialog.showModal(); }
+closeCreate.onclick = ()=> createDialog.close();
+
+genBtn.onclick = ()=>{
+  const base = baseColorInput.value;
+  const rule = ruleSel.value;
+  const colors = RULES[rule].fn(base);
+  draft = { name: autoName(rule), rule, base, colors };
+  renderCreatePreview(colors);
+  saveBtn.disabled = false;
+};
+
+saveBtn.onclick = ()=>{
+  if(!draft) return;
+  gallery.unshift(draft);
+  render();
+  createDialog.close();
+};
+
+function renderCreatePreview(colors){
+  createPreview.innerHTML = '';
+  colors.forEach(hex=>{
+    const cell = document.createElement('div');
+    cell.className = 'big-swatch';
+    cell.style.background = hex;
+    const label = document.createElement('div');
+    label.className = 'hex'; label.textContent = hex.toUpperCase();
+    const copy = document.createElement('button');
+    copy.className = 'copy-btn'; copy.textContent='Copy';
+    copy.onclick = (ev)=>{ ev.stopPropagation(); navigator.clipboard.writeText(hex); copy.textContent='Copied!'; setTimeout(()=>copy.textContent='Copy',900); };
+    cell.appendChild(copy);
+    cell.appendChild(label);
+    createPreview.appendChild(cell);
+  });
+}
+
+// update the swatch color
+function updatePreview() {
+    previewSwatch.style.background = baseColorPicker.value;
+}
+
+
+
+function autoName(rule){
+  const base = RULES[rule].name.split(' ')[0];
+  const n = Math.floor(100 + Math.random()*900);
+  return `${base} ${n}`;
+}
+
+/* ---------- About ---------- */
+document.getElementById('aboutBtn').onclick = ()=>{
+  const msg = [
+    'Color Theory Modes:',
+    '• Complementary — opposite hues; bold contrast with balance.',
+    '• Analogous — adjacent hues; soft, cohesive feel.',
+    '• Triadic — 3 evenly spaced hues; lively + balanced.',
+    '• Monochromatic — tints/shades of one hue; classy cohesion.',
+    '• Split-Complementary — base + neighbors of complement; contrast with lower tension.',
+    '• Modern Art (rule-breaker) — deliberately clashing neons / uneven saturation to emulate expressive or pop-art palettes.',
+    '',
+    'Tips:',
+    '• Click any palette to open a popup with large swatches, hex values, and copy controls.',
+    '• Create palettes from the “New Palette” button — pick a rule and a base color.',
+    '• Cards show 4 mm × 4 mm swatches (larger in popups for readability).'
+  ].join('\n');
+  alert(msg);
+};
+
+/* ---------- Boot ---------- */
+seed();
+render();
+</script>
+</body>
+</html>
